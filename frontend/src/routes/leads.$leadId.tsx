@@ -11,7 +11,9 @@ import {
   ChevronRight, 
   FileText,
   User,
-  Activity
+  Activity,
+  Repeat2,
+  Paperclip
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch, apiJson } from '../lib/api';
@@ -27,11 +29,18 @@ function LeadDetailComponent() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [lead, setLead] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'details' | 'ai-coach'>('details');
+  const [users, setUsers] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'details' | 'activity' | 'ai-coach'>('details');
   const [newContactName, setNewContactName] = useState('');
   const [newContactPosition, setNewContactPosition] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
+  const [newNoteType, setNewNoteType] = useState('General');
+  const [transferTo, setTransferTo] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [attachmentName, setAttachmentName] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [loadingAI, setLoadingAI] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
@@ -39,12 +48,23 @@ function LeadDetailComponent() {
 
   const fetchLeadDetail = () => {
     apiFetch(`/api/leads/${leadId}`)
-      .then(data => setLead(data))
+      .then(data => {
+        setLead(data);
+        setTransferTo(data.assignedTo || '');
+      })
       .catch(err => console.error('Failed to load lead details:', err));
+  };
+
+  const fetchActivity = () => {
+    apiFetch(`/api/leads/${leadId}/activity`)
+      .then(data => setActivities(Array.isArray(data) ? data : []))
+      .catch(err => console.error('Failed to load lead activity:', err));
   };
 
   useEffect(() => {
     fetchLeadDetail();
+    fetchActivity();
+    apiFetch('/api/users').then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
   }, [leadId]);
 
   const handleAddContact = (e: React.FormEvent) => {
@@ -69,12 +89,14 @@ function LeadDetailComponent() {
     e.preventDefault();
     if (!newNoteContent.trim() || !lead) return;
 
-    const newNote = { author: user?.name || 'ผู้ใช้งานระบบ', content: newNoteContent, createdAt: new Date() };
+    const newNote = { author: user?.name || 'ผู้ใช้งานระบบ', content: newNoteContent, type: newNoteType, createdAt: new Date() };
 
     apiJson(`/api/leads/${leadId}`, { notes: [newNote] }, { method: 'PUT' })
       .then(() => {
         setNewNoteContent('');
+        setNewNoteType('General');
         fetchLeadDetail();
+        fetchActivity();
       })
       .catch(err => console.error('Failed to add note:', err));
   };
@@ -98,12 +120,14 @@ function LeadDetailComponent() {
     const newNote = {
       author: user?.name || 'ผู้ใช้งานระบบ',
       content: `[Coaching] ${coachNote.trim()}`,
+      type: 'Coaching',
       createdAt: new Date()
     };
     apiJson(`/api/leads/${leadId}`, { notes: [newNote] }, { method: 'PUT' })
       .then(() => {
         setCoachNote('');
         fetchLeadDetail();
+        fetchActivity();
       })
       .catch(err => console.error('Failed to save coaching note:', err));
   };
@@ -121,6 +145,45 @@ function LeadDetailComponent() {
     if (status === 'Warm') return 'text-amber-400 bg-amber-500/10 border-amber-500/25';
     if (status === 'Cold') return 'text-blue-400 bg-blue-500/10 border-blue-500/25';
     return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
+  };
+  const userName = (userId?: string) => users.find(item => item._id === userId)?.name || 'ไม่ระบุ';
+  const handleTransferOwner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferTo || transferTo === lead.assignedTo) return;
+    apiJson(`/api/leads/${leadId}`, { assignedTo: transferTo, transferReason }, { method: 'PUT' })
+      .then(data => {
+        setLead(data);
+        setTransferReason('');
+        fetchActivity();
+      })
+      .catch(err => console.error('Failed to transfer lead owner:', err));
+  };
+  const handleAddAttachment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!attachmentName.trim() || !attachmentUrl.trim()) return;
+    const attachments = [
+      ...(lead.attachments || []),
+      {
+        name: attachmentName.trim(),
+        url: attachmentUrl.trim(),
+        uploadedAt: new Date(),
+        uploadedBy: user?._id
+      }
+    ];
+    apiJson(`/api/leads/${leadId}`, { attachments }, { method: 'PUT' })
+      .then(data => {
+        setLead(data);
+        setAttachmentName('');
+        setAttachmentUrl('');
+        fetchActivity();
+      })
+      .catch(err => console.error('Failed to add attachment:', err));
+  };
+  const handleArchiveLead = () => {
+    if (!window.confirm('ยืนยัน archive lead นี้?')) return;
+    apiFetch(`/api/leads/${leadId}`, { method: 'DELETE' })
+      .then(() => navigate({ to: '/leads/index' }))
+      .catch(err => console.error('Failed to archive lead:', err));
   };
 
   return (
@@ -150,11 +213,24 @@ function LeadDetailComponent() {
               </span>
               <span className="text-slate-700 text-xs">•</span>
               <span className="text-[10px] text-slate-400">Score: {lead.score}%</span>
+              <span className="text-slate-700 text-xs">•</span>
+              <span className="text-[10px] text-slate-400">Owner: {userName(lead.assignedTo)}</span>
             </div>
+            {(lead.source || lead.campaign) && (
+              <div className="text-[10px] text-slate-500 mt-1">
+                Source: {lead.source || '-'} {lead.campaign ? `· Campaign: ${lead.campaign}` : ''}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleArchiveLead}
+            className="flex items-center gap-1.5 px-4 py-2 border border-rose-500/25 bg-rose-500/10 hover:bg-rose-500/15 rounded-lg text-xs font-semibold text-rose-300 cursor-pointer transition-all"
+          >
+            Archive Lead
+          </button>
           <button 
             onClick={() => navigate({ to: '/quotes/build' })}
             className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
@@ -168,6 +244,7 @@ function LeadDetailComponent() {
       <div className="border-b border-slate-800 flex gap-4">
         {[
           { id: 'details', label: 'ผู้ติดต่อและข้อมูลบันทึก', icon: User },
+          { id: 'activity', label: 'Activity Timeline', icon: Activity },
           { id: 'ai-coach', label: 'คำแนะนำการขาย AI Coach', icon: Sparkles }
         ].map(tab => (
           <button
@@ -194,6 +271,36 @@ function LeadDetailComponent() {
               >
                 <Plus size={10} /> เพิ่มผู้ติดต่อ
               </button>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 space-y-3">
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                <Repeat2 size={13} /> Transfer Owner
+              </h3>
+              <form onSubmit={handleTransferOwner} className="space-y-2">
+                <select value={transferTo} onChange={e => setTransferTo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  {users.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
+                </select>
+                <input value={transferReason} onChange={e => setTransferReason(e.target.value)} placeholder="เหตุผลการโอนงาน" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <button disabled={!transferTo || transferTo === lead.assignedTo} type="submit" className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white disabled:opacity-40">โอนผู้ดูแล</button>
+              </form>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 space-y-2">
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                <Paperclip size={13} /> Attachments
+              </h3>
+              {(lead.attachments || []).map((item: any, idx: number) => (
+                <a key={idx} href={item.url} target="_blank" rel="noreferrer" className="block p-2 rounded-lg border border-slate-800 text-[10px] text-indigo-300 hover:bg-slate-800/50">
+                  {item.name}
+                </a>
+              ))}
+              {!(lead.attachments || []).length && <div className="text-[10px] text-slate-500">ยังไม่มีไฟล์แนบ</div>}
+              <form onSubmit={handleAddAttachment} className="pt-2 space-y-2">
+                <input value={attachmentName} onChange={e => setAttachmentName(e.target.value)} placeholder="ชื่อไฟล์/เอกสาร" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
+                <input value={attachmentUrl} onChange={e => setAttachmentUrl(e.target.value)} placeholder="URL เอกสารหรือ proposal" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
+                <button type="submit" className="w-full px-3 py-2 rounded-lg bg-slate-800 text-[10px] font-semibold text-slate-200">เพิ่มไฟล์แนบ</button>
+              </form>
             </div>
 
             {showAddContact && (
@@ -263,6 +370,13 @@ function LeadDetailComponent() {
             <div className="p-6 rounded-2xl glass-panel">
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">เพิ่มบันทึกการประชุม/ความคืบหน้า (Notes)</h3>
               <form onSubmit={handleAddNote} className="space-y-3">
+                <select value={newNoteType} onChange={e => setNewNoteType(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  <option value="General">General</option>
+                  <option value="Call">Call</option>
+                  <option value="Meeting">Meeting</option>
+                  <option value="FollowUp">FollowUp</option>
+                  <option value="Coaching">Coaching</option>
+                </select>
                 <textarea
                   value={newNoteContent}
                   onChange={(e) => setNewNoteContent(e.target.value)}
@@ -290,7 +404,7 @@ function LeadDetailComponent() {
                   <div key={idx} className="p-3.5 rounded-xl border border-slate-800/80 bg-[#121826]/10 space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-[10.5px] font-semibold text-indigo-400 flex items-center gap-1">
-                        <User size={10} /> {note.author}
+                        <User size={10} /> {note.author} · {note.type || 'General'}
                       </span>
                       <span className="text-[9px] text-slate-500">{new Date(note.createdAt).toLocaleString('th-TH')}</span>
                     </div>
@@ -302,6 +416,28 @@ function LeadDetailComponent() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'activity' && (
+        <div className="p-6 rounded-2xl glass-panel space-y-4">
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Activity Timeline</h3>
+          <div className="space-y-3">
+            {activities.map(item => (
+              <div key={item._id} className="p-4 rounded-xl border border-slate-800 bg-[#121826]/35">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="inline-flex px-2 py-0.5 rounded border border-indigo-500/20 bg-indigo-500/10 text-[9px] font-bold text-indigo-300">{item.type}</span>
+                    <h4 className="mt-2 text-sm font-semibold text-slate-200">{item.title}</h4>
+                    <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+                    <p className="mt-2 text-[10px] text-slate-500">โดย {item.actorName}</p>
+                  </div>
+                  <span className="text-[10px] text-slate-500 shrink-0">{new Date(item.createdAt).toLocaleString('th-TH')}</span>
+                </div>
+              </div>
+            ))}
+            {activities.length === 0 && <div className="py-10 text-center text-xs text-slate-500">ยังไม่มี activity timeline</div>}
           </div>
         </div>
       )}

@@ -10,7 +10,9 @@
     "test:run": "vitest run",
     "check": "npm run build && npm run test:run",
     "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx watch src/server.ts",
+    "seed": "tsx src/config/seed-runner.ts",
+    "seed:prod": "NODE_ENV=production tsx src/config/seed-runner.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

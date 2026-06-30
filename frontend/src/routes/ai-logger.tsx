@@ -60,6 +60,18 @@ interface ParsedLog {
   aiLogId?: string;
   leadId?: string;
   matchedLead?: MatchedLead | null;
+  promptVersion?: string;
+  provider?: string;
+  usage?: {
+    inputChars: number;
+    estimatedTokens: number;
+    latencyMs?: number;
+    estimatedCostUsd?: number;
+  };
+  guardrails?: {
+    requiresReview: boolean;
+    reviewReasons: string[];
+  };
 }
 
 interface AILogEntry {
@@ -69,6 +81,9 @@ interface AILogEntry {
   leadId?: string;
   taskId?: string;
   status: 'Parsed' | 'Confirmed';
+  usage?: {
+    estimatedTokens: number;
+  };
   createdAt: string;
   confirmedAt?: string;
 }
@@ -166,6 +181,7 @@ function AILoggerComponent() {
   const [leadId, setLeadId] = useState<string | undefined>();
   const [aiLogId, setAiLogId] = useState<string | undefined>();
   const [matchedLead, setMatchedLead] = useState<MatchedLead | null>(null);
+  const [confirmLowConfidence, setConfirmLowConfidence] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [recentLogs, setRecentLogs] = useState<AILogEntry[]>([]);
 
@@ -204,6 +220,7 @@ function AILoggerComponent() {
     setLeadId(data.leadId);
     setAiLogId(data.aiLogId);
     setMatchedLead(data.matchedLead || null);
+    setConfirmLowConfidence(false);
   };
 
   const handleParse = async (e: React.FormEvent) => {
@@ -309,6 +326,7 @@ function AILoggerComponent() {
           aiLogId,
           confidence: parsedData?.confidence,
           missingFields: parsedData?.missingFields || [],
+          confirmLowConfidence,
           rawText: inputText.trim(),
           participantIds: user?._id ? [user._id] : []
         })
@@ -327,6 +345,22 @@ function AILoggerComponent() {
       setSaveError(err instanceof Error ? err.message : 'ไม่สามารถบันทึกงานจาก AI Logger ได้');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const exportSummary = async (logId?: string) => {
+    if (!logId) return;
+    try {
+      const res = await fetch(`/api/ai/logs/${logId}/export-summary`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await getApiMessage(res, 'Export summary ไม่สำเร็จ'));
+      await fetchRecentLogs();
+      setSaveError('');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Export summary ไม่สำเร็จ');
     }
   };
 
@@ -477,6 +511,22 @@ function AILoggerComponent() {
                 </div>
               )}
 
+              {parsedData.guardrails?.requiresReview && (
+                <label className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200">
+                  <input type="checkbox" checked={confirmLowConfidence} onChange={e => setConfirmLowConfidence(e.target.checked)} className="mt-0.5 accent-amber-500" />
+                  <span>ตรวจสอบข้อมูลสำคัญแล้ว ({parsedData.guardrails.reviewReasons.join(', ')})</span>
+                </label>
+              )}
+
+              {parsedData.usage && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-slate-400">
+                  <div className="p-2 rounded-lg border border-slate-800 bg-[#090d16]/50">Prompt: <span className="text-slate-200">{parsedData.promptVersion || '-'}</span></div>
+                  <div className="p-2 rounded-lg border border-slate-800 bg-[#090d16]/50">Provider: <span className="text-slate-200">{parsedData.provider || '-'}</span></div>
+                  <div className="p-2 rounded-lg border border-slate-800 bg-[#090d16]/50">Tokens: <span className="text-slate-200">{parsedData.usage.estimatedTokens}</span></div>
+                  <div className="p-2 rounded-lg border border-slate-800 bg-[#090d16]/50">Latency: <span className="text-slate-200">{parsedData.usage.latencyMs || 0}ms</span></div>
+                </div>
+              )}
+
               {saveError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-start gap-2">
                   <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -611,7 +661,7 @@ function AILoggerComponent() {
 
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || (parsedData.guardrails?.requiresReview && !confirmLowConfidence)}
                 className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white shadow-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {saving ? (
@@ -626,6 +676,11 @@ function AILoggerComponent() {
                   </>
                 )}
               </button>
+              {aiLogId && (
+                <button type="button" onClick={() => exportSummary(aiLogId)} className="w-full py-2.5 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+                  Export summary เข้า Lead note/timeline
+                </button>
+              )}
             </form>
           ) : (
             <div className="min-h-[420px] flex items-center justify-center text-center text-slate-500 text-xs">
@@ -676,7 +731,7 @@ function AILoggerComponent() {
                 </div>
                 <p className="mt-2 text-[10.5px] text-slate-500 line-clamp-2">{log.rawText}</p>
                 <div className="mt-3 flex items-center justify-between gap-2 text-[9.5px] text-slate-600">
-                  <span>{log.parsed?.type || 'Other'} • {log.parsed?.urgency || 'Medium'}</span>
+                  <span>{log.parsed?.type || 'Other'} • {log.parsed?.urgency || 'Medium'} • {log.usage?.estimatedTokens || 0} tokens</span>
                   <span>{new Date(log.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
                 </div>
               </button>

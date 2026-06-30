@@ -4,7 +4,12 @@
 
 ---
 
-## 🔐 บัญชีทดลองใช้งาน (ทุกบัญชีใช้รหัสผ่าน: **1234**)
+## 🔐 บัญชีทดลองใช้งาน
+
+บัญชี demo เดิมอาจถูกบังคับให้เปลี่ยนรหัสผ่านเมื่อ login ครั้งแรกตามนโยบาย password security ล่าสุด ส่วนบัญชี root ใช้รหัสแยกและเป็นบัญชีเดียวที่จัดการรหัสผ่านผู้ใช้อื่นได้
+
+- Root admin: `root@nextgen.co.th` ใช้รหัสผ่านที่กำหนดแยกในระบบ
+- บัญชี demo อื่น: ใช้รหัสเริ่มต้นสำหรับทดสอบใน dev เท่านั้น และระบบจะบังคับเปลี่ยนเมื่อยังเป็น default password
 
 | ชื่อ | อีเมล | ตำแหน่ง | Rank |
 |---|---|---|---|
@@ -23,7 +28,15 @@
 | ณัฐพล เครือสาร | prod1@nextgen.co.th | ทีม Production | 2 |
 | พิมพ์นิภา ทองใส | prod2@nextgen.co.th | ทีม Production | 2 |
 
-> **วิธีสลับบัญชี:** กดที่ avatar กลมๆ ด้านล่าง Sidebar ได้เลยโดยไม่ต้อง logout
+> **วิธีสลับบัญชี:** เฉพาะ `root@nextgen.co.th` เท่านั้นที่เห็น Quick Account Swapper และ production จะจำกัด/ปิดตามนโยบาย security
+
+### Password Management ล่าสุด
+
+- Root-only password reset/management
+- Password hash ด้วย `crypto.scrypt`
+- Password policy และ forced password change
+- Login session 7 วัน พร้อม frontend auto logout เมื่อ token หมดอายุ
+- Backend audit log เมื่อ login/logout/password/role/discount/product/workflow สำคัญเปลี่ยน
 
 ---
 
@@ -56,6 +69,7 @@
 - [ ] กดที่ตัวเลขแล้ว navigate ไปยังหน้าที่เกี่ยวข้องได้
 - [ ] Lead Status Funnel แสดงสัดส่วนถูกต้อง
 - [ ] กิจกรรมล่าสุดแสดงงานที่เกี่ยวข้องกับ user ที่ login
+- [ ] Metric ใช้ข้อมูลจริงจาก API และ reports summary ตามสิทธิ์ user
 
 ---
 
@@ -141,6 +155,9 @@
 - [ ] แสดง timeline กิจกรรมที่ผ่านมา
 - [ ] กรองตามช่วงเวลา / ประเภทกิจกรรม
 - [ ] Sales เห็นเฉพาะกิจกรรมของตัวเอง
+- [ ] Export CSV และ Print/PDF ได้
+- [ ] มี funnel lead → opportunity → quote → won
+- [ ] มีรายงาน quote approval, request SLA, task overdue และ sales performance by user/zone
 
 ---
 
@@ -150,6 +167,8 @@
 **สิ่งที่ควรตรวจสอบ:**
 - [ ] แสดงรายการสินค้าพร้อมราคา
 - [ ] เพิ่ม/แก้ไข/ลบสินค้า (พร้อม confirm ก่อนลบ)
+- [ ] สินค้าที่ถูกใช้ใน quote แล้วจะ soft delete/inactive แทนการลบจริง
+- [ ] มี import/export CSV, จัดการหมวดหมู่ และ price history
 - [ ] Special Offers / โปรโมชั่น ตั้งค่าได้
 - [ ] สินค้าที่เพิ่มปรากฏใน QuoteBuilder
 
@@ -164,6 +183,7 @@
 - [ ] Tab "รายบุคคล" — กำหนด limit ให้ Sales แต่ละคนได้
 - [ ] บันทึกแล้ว limit ใช้งานได้จริงใน QuoteBuilder
 - [ ] ประวัติการเปลี่ยนแปลงแสดงถูกต้อง
+- [ ] Quote ที่ส่วนลดสูงกว่า Manager limit ต้องให้ Exec/Rank 5 อนุมัติ
 
 ---
 
@@ -210,6 +230,17 @@
 - [ ] Export เป็น PDF ได้
 - [ ] ส่ง Quote → Manager/Exec อนุมัติ → status เปลี่ยน
 - [ ] Tab: ทั้งหมด / รอฉัน / อนุมัติแล้ว / ปฏิเสธ
+- [ ] Quote detail แสดง revision, approval trail, reject reason, email status, expiry, terms และ customer acceptance
+- [ ] Approved/Accepted quote แปลงเป็น Won opportunity ได้
+
+---
+
+## 🔔 Notifications ล่าสุด
+
+- Bell dropdown รองรับ filter ตาม category, unread-only, mark unread และ read all
+- User ตั้ง notification preferences ได้
+- Backend มี SSE endpoint สำหรับ realtime-ish delivery และ dedupe กัน spam
+- Cleanup/archive notification เก่ากว่า 90 วันได้
 
 ---
 
@@ -347,4 +378,3 @@
 2. **ข้อมูล INIT** — ข้อมูลตัวอย่าง (leads, requests, tasks) เป็น demo data จะรีเซ็ตเมื่อล้าง localStorage
 3. **Availability Check** — ตรวจจาก tasks/requests/events ที่อยู่ใน system เท่านั้น ไม่ sync กับ calendar ภายนอก
 4. **AI บันทึกด้วยการคุย** — เป็น simulation ยังไม่ได้เชื่อมกับ AI จริง
-

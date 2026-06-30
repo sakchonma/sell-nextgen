@@ -455,6 +455,36 @@ interface Notification {
     *   ปรับ shell หลักให้ responsive บนมือถือ/แท็บเล็ต, เพิ่ม focus-visible และ reduced-motion support
     *   เพิ่มหน้า `/reports` เพื่อปิด broken navigation และแยก Vite manual chunks สำหรับ router/icons เพื่อลดขนาด app bundle หลัก
 
+### 🔹 เฟส 10: Production Hardening & Security Completion
+*   [x] Password hashing, forced password change, root-only password management
+*   [x] Permission middleware และ Zod validation บน critical endpoints
+*   [x] Audit logs สำหรับ auth, user/role, product/discount, quote/request/task workflow
+*   [x] Production DB guard, environment validation, configurable CORS origins
+
+### 🔹 เฟส 11: Workflow Completion
+*   [x] Quote detail/versioning/sequence/approval trail/customer acceptance/convert to won opportunity
+*   [x] Request detail/comments/attachments/SLA/completion/target-user availability
+*   [x] Admin Calendar direct events, conflict detection, history, export/print
+
+### 🔹 เฟส 12: Reporting, Notification & AI Operations
+*   [x] Notification preferences, category filters, mark unread, cleanup, SSE stream, dedupe
+*   [x] AI Logger usage/cost metadata, prompt version, confidence guardrail, summary export
+*   [x] Reports summary API, CSV/Print export, funnel, quote approval, request SLA, task overdue, sales performance
+
+### 🔹 เฟส 13: Architecture Refactor Foundation
+*   [x] เริ่มแยก route เฉพาะออกจาก `app.ts` แล้ว เช่น `routes/products.ts`, `routes/pdf.ts`
+*   [x] เพิ่ม shared error handler/validation middleware foundation
+*   [x] เพิ่ม frontend shared domain types, reusable UI primitives และ API resource hook
+*   [ ] หมายเหตุ: `backend/src/app.ts` ยังเป็น monolith หลักในรอบนี้ การแยก controller/service เต็มรูปแบบเป็น target architecture ระยะถัดไป
+
+### 🔹 เฟส 14: Deployment & Operations
+*   [x] README runbook, Dockerfile backend/frontend, docker-compose MongoDB/backend/frontend
+*   [x] GitHub Actions CI สำหรับ backend/frontend `npm run check`
+*   [x] Backup/restore scripts, logrotate template, operations runbook
+*   [x] Seed runner แยกจาก server startup
+
+> โครงสร้าง folder ในเอกสารส่วนต้นเป็น target architecture ระยะยาว บางส่วนของ source ปัจจุบันยังอยู่ใน `backend/src/app.ts` เพื่อรักษาเสถียรภาพระหว่างการเพิ่มฟีเจอร์ MVP
+
 ---
 
 ## 🎯 สรุปขั้นตอนการทำรายงานและการไหลของข้อมูล (Data Flow & Workflows)

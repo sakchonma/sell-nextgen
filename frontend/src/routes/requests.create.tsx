@@ -64,6 +64,9 @@ function RequestCreateComponent() {
     targetDepartment: 'AdminSupport',
     targetUserId: '',
     reason: '',
+    priority: 'Medium',
+    attachmentName: '',
+    attachmentUrl: '',
     date: todayString(),
     startTime: '10:00',
     endTime: '11:00',
@@ -103,7 +106,9 @@ function RequestCreateComponent() {
     if (!form.date || !form.targetDepartment) return;
     setLoadingAvailability(true);
     setAvailability(null);
-    fetch(`/api/requests/availability?date=${form.date}&department=${form.targetDepartment}`, {
+    const params = new URLSearchParams({ date: form.date, department: form.targetDepartment });
+    if (form.targetUserId) params.set('targetUserId', form.targetUserId);
+    fetch(`/api/requests/availability?${params.toString()}`, {
       headers: authHeaders(),
     })
       .then(res => res.json())
@@ -138,7 +143,7 @@ function RequestCreateComponent() {
   const canGoStep2 = form.title.trim() && form.reason.trim() && form.leadId;
   const canGoStep3 = form.date && form.startTime && form.endTime && endAt > startAt;
 
-  const submitRequest = () => {
+  const submitRequest = (isDraft = false) => {
     setError('');
     if (!canGoStep3) {
       setError('กรุณาระบุวันเวลาให้ถูกต้อง');
@@ -153,6 +158,9 @@ function RequestCreateComponent() {
         targetDepartment: form.targetDepartment,
         targetUserId: form.targetUserId || undefined,
         reason: form.reason,
+        priority: form.priority,
+        isDraft,
+        attachments: form.attachmentName ? [{ name: form.attachmentName, url: form.attachmentUrl || undefined }] : [],
         startAt: startAt.toISOString(),
         endAt: endAt.toISOString(),
       })
@@ -238,6 +246,26 @@ function RequestCreateComponent() {
                 <option value="">ให้แผนกรับงานเอง</option>
                 {departmentUsers.map(item => <option key={item._id} value={item._id}>{item.name} · {item.email}</option>)}
               </select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">Priority / SLA</label>
+                <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none">
+                  <option value="Low">Low · 72h</option>
+                  <option value="Medium">Medium · 48h</option>
+                  <option value="High">High · 24h</option>
+                  <option value="Urgent">Urgent · 8h</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">ชื่อไฟล์แนบ</label>
+                <input value={form.attachmentName} onChange={e => setForm({ ...form, attachmentName: e.target.value })} placeholder="proposal.pdf" className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">ลิงก์ไฟล์แนบ</label>
+                <input value={form.attachmentUrl} onChange={e => setForm({ ...form, attachmentUrl: e.target.value })} placeholder="https://..." className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none" />
+              </div>
             </div>
 
             <div>
@@ -359,6 +387,8 @@ function RequestCreateComponent() {
                 ['ประเภท', REQUEST_TYPES.find(item => item.id === form.type)?.label || form.type],
                 ['แผนกปลายทาง', selectedDepartment?.label || form.targetDepartment],
                 ['บุคคลปลายทาง', selectedUser?.name || 'ให้แผนกรับงานเอง'],
+                ['Priority', form.priority],
+                ['ไฟล์แนบ', form.attachmentName || '-'],
                 ['วันเวลา', `${startAt.toLocaleString('th-TH')} - ${endAt.toLocaleTimeString('th-TH')}`],
               ].map(([label, value]) => (
                 <div key={label} className="p-3 rounded-lg border border-slate-800 bg-[#090d16]/40">
@@ -383,8 +413,11 @@ function RequestCreateComponent() {
             <div className={`p-3 rounded-lg border text-[11px] ${isAutoApproved ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
               {isAutoApproved ? 'หลังส่ง ระบบจะอนุมัติทันทีและส่งให้ผู้บริหารคนอื่นรับทราบ' : 'หลังส่ง คำขอจะอยู่ในคิวรอ Manager/Exec อนุมัติ'}
             </div>
-            <button disabled={submitting} onClick={submitRequest} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg disabled:opacity-50">
+            <button disabled={submitting} onClick={() => submitRequest(false)} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg disabled:opacity-50">
               {submitting ? 'กำลังส่งคำขอ...' : <><Send size={14} /> ส่งคำขอ</>}
+            </button>
+            <button disabled={submitting} onClick={() => submitRequest(true)} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:text-slate-100 disabled:opacity-50">
+              บันทึกแบบร่าง
             </button>
             <button onClick={() => setStep(2)} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">
               <Check size={14} /> กลับไปแก้เวลา

@@ -14,7 +14,8 @@ const memoryDb: Record<string, any[]> = {
   products: [],
   discount_settings: [],
   notifications: [],
-  ai_logs: []
+  ai_logs: [],
+  audit_logs: []
 };
 
 // Seed initial roles and users in memory in case MongoDB is not running
@@ -200,6 +201,18 @@ memoryDb.opportunities = [
 ];
 
 // Simple simulation of Mongo DB find/insert in memory for easy prototype testing
+function assertMemoryWriteAllowed(collectionName: string, operation: string) {
+  const status = getDbStatus();
+  if (status.memoryWriteBlocked) {
+    const error: any = new Error(
+      `Database write blocked: ${operation} on ${collectionName} cannot run while MongoDB is unavailable and ALLOW_MEMORY_DB is not true.`
+    );
+    error.statusCode = 503;
+    error.code = 'MEMORY_DB_WRITE_BLOCKED';
+    throw error;
+  }
+}
+
 export class MemoryCollection<T extends { _id?: string }> {
   constructor(private name: string) {}
 
@@ -223,6 +236,7 @@ export class MemoryCollection<T extends { _id?: string }> {
   }
 
   async insertOne(item: T): Promise<{ insertedId: string }> {
+    assertMemoryWriteAllowed(this.name, 'insertOne');
     const id = item._id || Math.random().toString(36).substring(7);
     const doc = { ...item, _id: id };
     memoryDb[this.name]?.push(doc);
@@ -230,6 +244,7 @@ export class MemoryCollection<T extends { _id?: string }> {
   }
 
   async updateOne(query: any, update: any): Promise<{ matchedCount: number; modifiedCount: number }> {
+    assertMemoryWriteAllowed(this.name, 'updateOne');
     const list = memoryDb[this.name] || [];
     const idx = list.findIndex(item => Object.entries(query).every(([key, value]) => (item as any)[key] === value));
     if (idx === -1) return { matchedCount: 0, modifiedCount: 0 };
@@ -239,6 +254,7 @@ export class MemoryCollection<T extends { _id?: string }> {
   }
 
   async deleteOne(query: any): Promise<{ deletedCount: number }> {
+    assertMemoryWriteAllowed(this.name, 'deleteOne');
     const list = memoryDb[this.name] || [];
     const idx = list.findIndex(item => Object.entries(query).every(([key, value]) => (item as any)[key] === value));
     if (idx === -1) return { deletedCount: 0 };
@@ -267,4 +283,5 @@ export const Products = () => getCollection<Types.Product>('products');
 export const Notifications = () => getCollection<Types.Notification>('notifications');
 export const DiscountLimits = () => getCollection<Types.DiscountLimit>('discount_settings');
 export const AILogs = () => getCollection<Types.AILog>('ai_logs');
+export const AuditLogs = () => getCollection<Types.AuditLog>('audit_logs');
 export const MemoryStore = memoryDb;

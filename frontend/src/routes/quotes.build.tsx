@@ -22,6 +22,11 @@ function QuoteBuilderComponent() {
   const [items, setItems] = useState<any[]>([]);
   const [overallDiscountPercent, setOverallDiscountPercent] = useState(0);
   const [vatPercent, setVatPercent] = useState(7);
+  const [expiresAt, setExpiresAt] = useState(() => {
+    const date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    return date.toISOString().split('T')[0];
+  });
+  const [terms, setTerms] = useState('ราคานี้มีผลภายในวันหมดอายุที่ระบุ และยังไม่รวมค่าใช้จ่ายนอกเหนือขอบเขตงานที่ตกลง');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -101,6 +106,8 @@ function QuoteBuilderComponent() {
         overallDiscountPercent,
         vatPercent,
         totalAmount: totals.total,
+        expiresAt,
+        terms,
       })
       .then(data => {
         setMessage(data.status === 'PendingApproval' ? 'สร้างใบเสนอราคาแล้วและส่งเข้าคิวอนุมัติส่วนลด' : 'สร้างใบเสนอราคาและอนุมัติอัตโนมัติแล้ว');
@@ -221,6 +228,17 @@ function QuoteBuilderComponent() {
             <div>
               <label className="block text-[10px] text-slate-500 font-semibold mb-1">VAT</label>
               <input type="number" min={0} max={100} value={vatPercent} onChange={e => setVatPercent(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-right focus:outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[10px] text-slate-500 font-semibold mb-1">วันหมดอายุใบเสนอราคา</label>
+              <input type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-500 font-semibold mb-1">Terms & Conditions</label>
+              <textarea value={terms} onChange={e => setTerms(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" />
             </div>
           </div>
 

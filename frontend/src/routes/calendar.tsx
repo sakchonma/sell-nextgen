@@ -28,7 +28,7 @@ function CalendarComponent() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<User[]>([]);
   const [selectedUserFilter, setSelectedUserFilter] = useState('All');
-  const [viewMode, setViewMode] = useState<'month' | 'agenda'>('month');
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day' | 'agenda'>('month');
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [comment, setComment] = useState('');
   
@@ -55,6 +55,11 @@ function CalendarComponent() {
 
   const handleNextMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+  const moveDate = (days: number) => {
+    const next = new Date(currentDate);
+    next.setDate(currentDate.getDate() + days);
+    setCurrentDate(next);
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -87,6 +92,23 @@ function CalendarComponent() {
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     .filter(task => new Date(task.startAt).getMonth() === currentDate.getMonth());
   const myParticipant = selectedTask?.participants?.find((p: any) => p.userId === user?._id);
+  const weekStart = new Date(currentDate);
+  weekStart.setDate(currentDate.getDate() - currentDate.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, idx) => {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + idx);
+    return day;
+  });
+  const dayTasks = filteredTasks
+    .filter(task => new Date(task.startAt).toDateString() === currentDate.toDateString())
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+  const taskColor = (task: any) => {
+    if (task.status === 'Completed') return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200';
+    if (new Date(task.endAt) < new Date()) return 'border-rose-500/25 bg-rose-500/10 text-rose-200';
+    if (task.type === 'Demo') return 'border-purple-500/25 bg-purple-500/10 text-purple-200';
+    if (task.type === 'Call') return 'border-blue-500/25 bg-blue-500/10 text-blue-200';
+    return 'border-indigo-500/20 bg-indigo-500/5 text-slate-200';
+  };
 
   const respondToTask = (status: string) => {
     if (!selectedTask) return;
@@ -149,15 +171,18 @@ function CalendarComponent() {
         
         <div className="flex gap-2">
           <button onClick={() => setViewMode('month')} className={`p-2 rounded-lg border ${viewMode === 'month' ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-slate-800 text-slate-400'}`} title="Month view"><Grid3X3 size={14} /></button>
+          <button onClick={() => setViewMode('week')} className={`px-2 py-1 rounded-lg border text-[10px] ${viewMode === 'week' ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-slate-800 text-slate-400'}`}>Week</button>
+          <button onClick={() => setViewMode('day')} className={`px-2 py-1 rounded-lg border text-[10px] ${viewMode === 'day' ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-slate-800 text-slate-400'}`}>Day</button>
           <button onClick={() => setViewMode('agenda')} className={`p-2 rounded-lg border ${viewMode === 'agenda' ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-slate-800 text-slate-400'}`} title="Agenda view"><List size={14} /></button>
+          <a href="/api/tasks/export.ics" className="px-2 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-400 hover:text-slate-200">ICS</a>
           <button 
-            onClick={handlePrevMonth}
+            onClick={() => viewMode === 'month' ? handlePrevMonth() : moveDate(viewMode === 'week' ? -7 : -1)}
             className="p-2 rounded-lg bg-[#090d16] hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer"
           >
             <ChevronLeft size={14} />
           </button>
           <button 
-            onClick={handleNextMonth}
+            onClick={() => viewMode === 'month' ? handleNextMonth() : moveDate(viewMode === 'week' ? 7 : 1)}
             className="p-2 rounded-lg bg-[#090d16] hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer"
           >
             <ChevronRight size={14} />
@@ -166,6 +191,40 @@ function CalendarComponent() {
       </div>
 
       {/* MONTH VIEW AGENDA LAYOUT */}
+      {viewMode === 'week' && (
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+          {weekDays.map(day => {
+            const items = filteredTasks.filter(task => new Date(task.startAt).toDateString() === day.toDateString());
+            return (
+              <div key={day.toISOString()} className="rounded-2xl border border-slate-800 bg-[#121826]/30 p-3 min-h-[260px]">
+                <div className="text-[10px] font-black text-slate-400 mb-3">{day.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' })}</div>
+                <div className="space-y-2">
+                  {items.map(task => (
+                    <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-2 rounded-lg border text-left ${taskColor(task)}`}>
+                      <div className="text-[9px] opacity-70">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+                      <div className="text-[10px] font-semibold line-clamp-2">{task.title}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {viewMode === 'day' && (
+        <div className="p-6 rounded-2xl glass-panel space-y-3">
+          {dayTasks.map(task => (
+            <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-4 rounded-xl border text-left ${taskColor(task)}`}>
+              <div className="text-[10px] opacity-70">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.endAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+              <h4 className="text-sm font-semibold mt-1">{task.title}</h4>
+              <p className="text-xs opacity-75 mt-1">{task.description || 'ไม่มีรายละเอียด'}</p>
+            </button>
+          ))}
+          {dayTasks.length === 0 && <div className="py-12 text-center text-xs text-slate-500">ไม่มีตารางงานในวันนี้</div>}
+        </div>
+      )}
+
       {viewMode === 'agenda' && (
         <div className="p-6 rounded-2xl glass-panel divide-y divide-slate-800">
           {agendaTasks.map(task => (
@@ -205,7 +264,7 @@ function CalendarComponent() {
               {/* Day Tasks list */}
               <div className="mt-3 space-y-2 flex-1">
                 {dayTasks.slice(0, 2).map(task => (
-                  <button key={task._id} onClick={() => setSelectedTask(task)} className="w-full p-2 rounded bg-slate-950/50 border border-slate-900 text-[10px] space-y-1 text-left hover:border-indigo-500/30">
+                  <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-2 rounded border text-[10px] space-y-1 text-left hover:border-indigo-500/30 ${taskColor(task)}`}>
                     <span className="font-bold text-slate-300 block line-clamp-1">{task.title}</span>
                     <div className="flex items-center justify-between text-slate-500 text-[9px]">
                       <span className="flex items-center gap-0.5"><Clock size={8} /> {new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>

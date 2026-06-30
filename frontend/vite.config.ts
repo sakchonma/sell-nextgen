@@ -12,9 +12,11 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    allowedHosts: [
-      '76ae-2405-9800-b660-1083-4935-38a9-6539-8bdc.ngrok-free.app',
-    ],
+    // แก้ตรงนี้: เอา https:// ออก ให้เหลือแค่ชื่อโดเมน
+    allowedHosts: (process.env.VITE_ALLOWED_HOSTS || 'f314-49-228-184-149.ngrok-free.app')
+      .split(',')
+      .map(host => host.trim())
+      .filter(Boolean),
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5001',

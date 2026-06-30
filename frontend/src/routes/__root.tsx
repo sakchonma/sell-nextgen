@@ -2,6 +2,7 @@ import { createRootRoute, Outlet, Link, useNavigate, useLocation } from '@tansta
 import { useState, useEffect } from 'react';
 import { useAuth, User } from '../hooks/useAuth';
 import { apiFetch, apiJson, authHeaders } from '../lib/api';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { 
   LayoutDashboard, 
   Users, 
@@ -20,7 +21,10 @@ import {
   DollarSign,
   Bell,
   CheckCircle2,
-  Users2
+  Users2,
+  EyeOff,
+  SlidersHorizontal,
+  Archive
 } from 'lucide-react';
 
 export const Route = createRootRoute({
@@ -28,16 +32,26 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
-  const { user, isAuthenticated, isLoading, logout, swapUser } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, swapUser, changePassword } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const canUseQuickSwapper = user?.email === 'root@nextgen.co.th' && !import.meta.env.PROD;
   const [showSwapper, setShowSwapper] = useState(false);
   const [swapperUsers, setSwapperUsers] = useState<User[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotif, setShowNotif] = useState(false);
+  const [notifCategory, setNotifCategory] = useState('All');
+  const [notifUnreadOnly, setNotifUnreadOnly] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState<any>(null);
+  const [showNotifPrefs, setShowNotifPrefs] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState('');
 
   // Load 14 test users for quick swap
   useEffect(() => {
+    if (!canUseQuickSwapper) return;
     fetch('/api/users', { headers: authHeaders() })
       .then(res => res.json())
       .then(data => setSwapperUsers(data))
@@ -56,12 +70,14 @@ function RootComponent() {
           { _id: 'u9', name: 'วรากร ดีงาม', email: 'central@nextgen.co.th', rank: 2, roleId: 'r_support' }
         ]);
       });
-  }, []);
+  }, [canUseQuickSwapper]);
 
   const loadNotifications = () => {
     if (!isAuthenticated) return;
-    apiFetch<any[]>('/api/notifications')
-      .then(data => setNotifications(Array.isArray(data) ? data : []))
+    const params = new URLSearchParams({ category: notifCategory, limit: '40' });
+    if (notifUnreadOnly) params.set('unread', 'true');
+    apiFetch<any>(`/api/notifications?${params.toString()}`)
+      .then(data => setNotifications(Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : []))
       .catch(err => console.error('Failed to load notifications:', err));
   };
 
@@ -70,6 +86,13 @@ function RootComponent() {
     if (!isAuthenticated) return;
     const timer = window.setInterval(loadNotifications, 30000);
     return () => window.clearInterval(timer);
+  }, [isAuthenticated, user?._id, notifCategory, notifUnreadOnly]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    apiFetch('/api/notifications/preferences')
+      .then(data => setNotifPrefs(data))
+      .catch(() => undefined);
   }, [isAuthenticated, user?._id]);
 
   const handleSwap = (u: User) => {
@@ -139,11 +162,45 @@ function RootComponent() {
       .catch(err => console.error('Failed to mark notifications read:', err));
   };
 
+  const markNotificationUnread = (notif: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    apiJson(`/api/notifications/${notif._id}/unread`, {}, { method: 'PUT' })
+      .then(() => setNotifications(prev => prev.map(item => item._id === notif._id ? { ...item, isRead: false } : item)))
+      .catch(err => console.error('Failed to mark notification unread:', err));
+  };
+
+  const cleanupNotifications = () => {
+    apiJson('/api/notifications/cleanup', {}, { method: 'PUT' })
+      .then(() => loadNotifications())
+      .catch(err => console.error('Failed to cleanup notifications:', err));
+  };
+
+  const saveNotificationPreferences = (nextPrefs: any) => {
+    setNotifPrefs(nextPrefs);
+    apiJson('/api/notifications/preferences', nextPrefs, { method: 'PUT' }).catch(err => console.error('Failed to save notification prefs:', err));
+  };
+
   const openNotification = (notif: any) => {
     apiJson(`/api/notifications/${notif._id}/read`, {}, { method: 'PUT' }).catch(() => undefined);
     setNotifications(prev => prev.map(item => item._id === notif._id ? { ...item, isRead: true } : item));
     setShowNotif(false);
     if (notif.targetUrl) navigate({ to: notif.targetUrl as any });
+  };
+
+  const handleForcedPasswordChange = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeError('');
+    if (newPassword !== confirmPassword) {
+      setPasswordChangeError('รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');
+      return;
+    }
+    changePassword(currentPassword, newPassword)
+      .then(() => {
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      })
+      .catch((err) => setPasswordChangeError(err.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ'));
   };
 
   return (
@@ -302,9 +359,9 @@ function RootComponent() {
           {user && (
             <div className="flex items-center justify-between gap-3">
               <button 
-                onClick={() => setShowSwapper(true)}
-                className="w-10 h-10 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center font-bold hover:scale-105 hover:border-indigo-400 active:scale-95 transition-all cursor-pointer relative group"
-                title="คลิกเพื่อสลับผู้ใช้ด่วน"
+                onClick={() => canUseQuickSwapper && setShowSwapper(true)}
+                className={`w-10 h-10 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center font-bold transition-all relative group ${canUseQuickSwapper ? 'hover:scale-105 hover:border-indigo-400 active:scale-95 cursor-pointer' : 'cursor-default'}`}
+                title={canUseQuickSwapper ? 'คลิกเพื่อสลับผู้ใช้ด่วน' : user.email}
               >
                 {user.name.charAt(0)}
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-[#090d16] rounded-full"></div>
@@ -370,21 +427,71 @@ function RootComponent() {
                 <div className="absolute right-0 mt-2 w-80 glass-panel border border-slate-800 rounded-xl shadow-2xl z-50 p-4 animate-scale-up">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
                     <span className="text-xs font-semibold text-slate-200">การแจ้งเตือน</span>
-                    <button 
-                      onClick={markAllNotificationsRead}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold"
-                    >
-                      อ่านทั้งหมดแล้ว
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setShowNotifPrefs(!showNotifPrefs)} className="text-slate-500 hover:text-slate-200" title="ตั้งค่าแจ้งเตือน">
+                        <SlidersHorizontal size={14} />
+                      </button>
+                      <button onClick={cleanupNotifications} className="text-slate-500 hover:text-slate-200" title="Archive เก่ากว่า 90 วัน">
+                        <Archive size={14} />
+                      </button>
+                      <button
+                        onClick={markAllNotificationsRead}
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold"
+                      >
+                        อ่านทั้งหมดแล้ว
+                      </button>
+                    </div>
                   </div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <select value={notifCategory} onChange={e => setNotifCategory(e.target.value)} className="flex-1 px-2 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[10px] text-slate-300 outline-none">
+                      <option value="All">ทุกหมวด</option>
+                      <option value="Request">Request</option>
+                      <option value="Quote">Quote</option>
+                      <option value="Task">Task</option>
+                      <option value="Calendar">Calendar</option>
+                      <option value="System">System</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-[10px] text-slate-400">
+                      <input type="checkbox" checked={notifUnreadOnly} onChange={e => setNotifUnreadOnly(e.target.checked)} className="accent-indigo-500" />
+                      ยังไม่อ่าน
+                    </label>
+                  </div>
+                  {showNotifPrefs && notifPrefs && (
+                    <div className="mb-3 p-3 rounded-lg border border-slate-800 bg-[#090d16]/60 space-y-2">
+                      {['Request', 'Quote', 'Task', 'Calendar', 'System'].map(category => (
+                        <label key={category} className="flex items-center justify-between text-[10px] text-slate-300">
+                          <span>{category}</span>
+                          <input
+                            type="checkbox"
+                            checked={notifPrefs.categories?.[category] !== false}
+                            onChange={e => saveNotificationPreferences({
+                              ...notifPrefs,
+                              categories: { ...(notifPrefs.categories || {}), [category]: e.target.checked }
+                            })}
+                            className="accent-indigo-500"
+                          />
+                        </label>
+                      ))}
+                      <label className="flex items-center justify-between text-[10px] text-slate-300 border-t border-slate-800 pt-2">
+                        <span>Digest only</span>
+                        <input type="checkbox" checked={Boolean(notifPrefs.digestOnly)} onChange={e => saveNotificationPreferences({ ...notifPrefs, digestOnly: e.target.checked })} className="accent-indigo-500" />
+                      </label>
+                    </div>
+                  )}
                   <div className="space-y-3">
                     {notifications.map(notif => (
                       <button key={notif._id} onClick={() => openNotification(notif)} className={`w-full p-2.5 rounded-lg border text-left transition-all ${notif.isRead ? 'bg-transparent border-transparent' : 'bg-indigo-500/5 border-indigo-500/10'}`}>
                         <div className="flex justify-between items-start gap-2">
                           <span className="text-xs font-semibold text-slate-200">{notif.title}</span>
-                          <span className="text-[9px] text-slate-500 shrink-0">{new Date(notif.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={(e) => markNotificationUnread(notif, e)} className="text-slate-600 hover:text-indigo-300" title="ทำเครื่องหมายว่ายังไม่อ่าน">
+                              <EyeOff size={12} />
+                            </button>
+                            <span className="text-[9px] text-slate-500">{new Date(notif.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          </div>
                         </div>
                         <p className="text-[11px] text-slate-400 mt-1">{notif.message}</p>
+                        <span className="inline-block mt-2 px-1.5 py-0.5 rounded border border-slate-800 text-[9px] text-slate-500">{notif.category || notif.type}</span>
                       </button>
                     ))}
                     {notifications.length === 0 && (
@@ -399,12 +506,45 @@ function RootComponent() {
 
         {/* PAGE CONTENT */}
         <main className="p-4 sm:p-6 lg:p-8 flex-1 min-w-0">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 
       {/* QUICK USER SWAPPER MODAL */}
-      {showSwapper && (
+      {user?.forcePasswordChange && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <form onSubmit={handleForcedPasswordChange} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-slate-100">ตั้งรหัสผ่านใหม่</h3>
+              <p className="text-xs text-slate-400 mt-1">บัญชีนี้ยังใช้รหัสผ่านเริ่มต้น กรุณาเปลี่ยนรหัสผ่านก่อนใช้งานต่อ</p>
+            </div>
+            {passwordChangeError && (
+              <div className="p-3 rounded-lg border border-rose-500/20 bg-rose-500/10 text-xs text-rose-300">
+                {passwordChangeError}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">รหัสผ่านปัจจุบัน</label>
+              <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">รหัสผ่านใหม่</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} required className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">ยืนยันรหัสผ่านใหม่</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={8} required className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200" />
+            </div>
+            <button type="submit" className="w-full px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500">
+              บันทึกรหัสผ่านใหม่
+            </button>
+          </form>
+        </div>
+      )}
+
+      {canUseQuickSwapper && showSwapper && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">

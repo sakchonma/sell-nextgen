@@ -15,7 +15,10 @@ import {
   MessageSquare,
   Trash2,
   List,
-  Grid3X3
+  Grid3X3,
+  Edit,
+  Repeat2,
+  Link as LinkIcon
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 
@@ -29,11 +32,15 @@ function TasksComponent() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
   const [coworkers, setCoworkers] = useState<User[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [opportunities, setOpportunities] = useState<any[]>([]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'overdue' | 'completed'>('all');
-  const [viewMode, setViewMode] = useState<'list' | 'month'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'month' | 'week' | 'day'>('list');
   const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [editingTask, setEditingTask] = useState<any>(null);
   const [comment, setComment] = useState('');
   const [formError, setFormError] = useState('');
+  const [conflicts, setConflicts] = useState<any[]>([]);
   
   // Form State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -42,6 +49,11 @@ function TasksComponent() {
   const [type, setType] = useState('Meeting');
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
+  const [leadId, setLeadId] = useState('');
+  const [opportunityId, setOpportunityId] = useState('');
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState('30');
+  const [recurrenceRule, setRecurrenceRule] = useState('none');
+  const [recurrenceCount, setRecurrenceCount] = useState('1');
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
   
   // Reject Dialog State
@@ -57,11 +69,61 @@ function TasksComponent() {
     apiFetch('/api/users')
       .then(data => setCoworkers(data.filter((u: any) => u._id !== user?._id)))
       .catch(err => console.error('Failed to load coworkers:', err));
+    apiFetch('/api/leads')
+      .then(data => setLeads(Array.isArray(data) ? data : []))
+      .catch(() => setLeads([]));
+    apiFetch('/api/opportunities')
+      .then(data => setOpportunities(Array.isArray(data) ? data : []))
+      .catch(() => setOpportunities([]));
   };
 
   useEffect(() => {
     fetchTasksData();
   }, [user]);
+
+  const resetTaskForm = () => {
+    setTitle('');
+    setDescription('');
+    setType('Meeting');
+    setStartAt('');
+    setEndAt('');
+    setLeadId('');
+    setOpportunityId('');
+    setReminderMinutesBefore('30');
+    setRecurrenceRule('none');
+    setRecurrenceCount('1');
+    setInvitedIds([]);
+    setConflicts([]);
+    setEditingTask(null);
+  };
+
+  const openEditTask = (task: any) => {
+    setEditingTask(task);
+    setTitle(task.title || '');
+    setDescription(task.description || '');
+    setType(task.type || 'Meeting');
+    setStartAt(new Date(task.startAt).toISOString().slice(0, 16));
+    setEndAt(new Date(task.endAt).toISOString().slice(0, 16));
+    setLeadId(task.leadId || '');
+    setOpportunityId(task.opportunityId || '');
+    setInvitedIds((task.participants || []).map((p: any) => p.userId).filter((id: string) => id !== user?._id));
+    setReminderMinutesBefore('30');
+    setRecurrenceRule('none');
+    setRecurrenceCount('1');
+    setFormError('');
+    setShowAddModal(true);
+  };
+
+  const checkConflicts = () => {
+    if (!startAt || !endAt) return;
+    apiJson('/api/tasks/conflicts', {
+      startAt,
+      endAt,
+      participantIds: [...invitedIds, user?._id].filter(Boolean)
+    })
+      .then(data => setConflicts(data.conflicts || []))
+      .catch(() => setConflicts([]));
+  };
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,19 +132,26 @@ function TasksComponent() {
       setFormError('วันและเวลาสิ้นสุดต้องมากกว่าวันและเวลาเริ่มต้น');
       return;
     }
-    apiJson('/api/tasks', {
+    const payload = {
       title,
       description,
       type,
       startAt,
       endAt,
-      participantIds: [...invitedIds, user?._id]
-    })
+      leadId: leadId || undefined,
+      opportunityId: opportunityId || undefined,
+      reminderMinutesBefore: Number(reminderMinutesBefore),
+      recurrenceRule,
+      recurrenceCount: Number(recurrenceCount) || 1,
+      participantIds: [...invitedIds, user?._id].filter(Boolean)
+    };
+    const request = editingTask
+      ? apiJson(`/api/tasks/${editingTask._id}`, { ...payload, recurrenceRule: undefined, recurrenceCount: undefined }, { method: 'PUT' })
+      : apiJson('/api/tasks', payload);
+    request
       .then(() => {
         setShowAddModal(false);
-        setTitle('');
-        setDescription('');
-        setInvitedIds([]);
+        resetTaskForm();
         fetchTasksData();
       })
       .catch(err => setFormError(err.message || 'สร้างนัดหมายไม่สำเร็จ'));
@@ -110,6 +179,15 @@ function TasksComponent() {
         fetchTasksData();
       })
       .catch(err => alert(err.message || 'ลบนัดหมายไม่สำเร็จ'));
+  };
+
+  const setTaskCompletion = (task: any, complete: boolean) => {
+    apiJson(`/api/tasks/${task._id}/${complete ? 'complete' : 'reopen'}`, {}, { method: 'PUT' })
+      .then(updated => {
+        setSelectedTask(updated);
+        fetchTasksData();
+      })
+      .catch(err => alert(err.message || 'อัปเดตสถานะงานไม่สำเร็จ'));
   };
 
   const handleAddComment = (e: React.FormEvent) => {
@@ -164,6 +242,21 @@ function TasksComponent() {
     acc[key] = [...(acc[key] || []), task];
     return acc;
   }, {});
+  const weekStart = new Date();
+  weekStart.setDate(now.getDate() - now.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, idx) => {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + idx);
+    return day;
+  });
+  const dayTasks = filteredSchedule.filter(t => new Date(t.startAt).toDateString() === now.toDateString());
+  const typeColor = (task: any) => {
+    if (task.status === 'Completed') return 'border-emerald-500/25 bg-emerald-500/10';
+    if (new Date(task.endAt) < now) return 'border-rose-500/25 bg-rose-500/10';
+    if (task.type === 'Demo') return 'border-purple-500/25 bg-purple-500/10';
+    if (task.type === 'Call') return 'border-blue-500/25 bg-blue-500/10';
+    return 'border-indigo-500/20 bg-indigo-500/5';
+  };
 
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
@@ -176,7 +269,7 @@ function TasksComponent() {
           <p className="text-xs text-slate-400 mt-1">บริหารจัดการนัดพบปะ ตารางสิทธิ์งาน และคำเชิญตอบรับเข้าร่วม</p>
         </div>
         <button 
-          onClick={() => setShowAddModal(true)}
+          onClick={() => { resetTaskForm(); setShowAddModal(true); }}
           className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
         >
           <Plus size={14} /> สร้างนัดหมายใหม่
@@ -203,6 +296,9 @@ function TasksComponent() {
         <div className="flex gap-2">
           <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg border ${viewMode === 'list' ? 'border-indigo-500/30 text-indigo-300 bg-indigo-500/10' : 'border-slate-800 text-slate-400'}`} title="List view"><List size={14} /></button>
           <button onClick={() => setViewMode('month')} className={`p-2 rounded-lg border ${viewMode === 'month' ? 'border-indigo-500/30 text-indigo-300 bg-indigo-500/10' : 'border-slate-800 text-slate-400'}`} title="Month grouped view"><Grid3X3 size={14} /></button>
+          <button onClick={() => setViewMode('week')} className={`px-2 py-1 rounded-lg border text-[10px] ${viewMode === 'week' ? 'border-indigo-500/30 text-indigo-300 bg-indigo-500/10' : 'border-slate-800 text-slate-400'}`}>Week</button>
+          <button onClick={() => setViewMode('day')} className={`px-2 py-1 rounded-lg border text-[10px] ${viewMode === 'day' ? 'border-indigo-500/30 text-indigo-300 bg-indigo-500/10' : 'border-slate-800 text-slate-400'}`}>Day</button>
+          <a href="/api/tasks/export.ics" className="px-2 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-400 hover:text-slate-200">Export ICS</a>
         </div>
       </div>
 
@@ -249,6 +345,38 @@ function TasksComponent() {
       <div className="p-6 rounded-2xl glass-panel space-y-4">
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">ตารางนัดหมายของคุณ</h3>
         <div className="divide-y divide-slate-800 max-h-[50vh] overflow-y-auto pr-2">
+          {viewMode === 'week' && (
+            <div className="grid grid-cols-1 md:grid-cols-7 gap-3 py-1">
+              {weekDays.map(day => {
+                const items = filteredSchedule.filter(t => new Date(t.startAt).toDateString() === day.toDateString());
+                return (
+                  <div key={day.toISOString()} className="rounded-xl border border-slate-800 bg-[#090d16]/30 p-3 min-h-40">
+                    <div className="text-[10px] font-black text-slate-400 mb-2">{day.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' })}</div>
+                    <div className="space-y-2">
+                      {items.map(task => (
+                        <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-2 rounded-lg border text-left ${typeColor(task)}`}>
+                          <div className="text-[9px] text-slate-500">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+                          <div className="text-[10px] font-semibold text-slate-200 line-clamp-2">{task.title}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {viewMode === 'day' && (
+            <div className="py-2 space-y-3">
+              {dayTasks.map(task => (
+                <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-4 rounded-xl border text-left ${typeColor(task)}`}>
+                  <div className="text-[10px] text-slate-500">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.endAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <h4 className="text-sm font-bold text-slate-200 mt-1">{task.title}</h4>
+                  <p className="text-xs text-slate-400 mt-1">{task.description || 'ไม่มีรายละเอียด'}</p>
+                </button>
+              ))}
+              {dayTasks.length === 0 && <div className="py-12 text-center text-xs text-slate-500">วันนี้ยังไม่มีงาน</div>}
+            </div>
+          )}
           {viewMode === 'month' && Object.entries(monthBuckets).map(([day, items]) => (
             <div key={day} className="py-4 first:pt-0 last:pb-0">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-3">{day}</h4>
@@ -295,7 +423,7 @@ function TasksComponent() {
               </div>
             </div>
           ))}
-          {filteredSchedule.length === 0 && (
+          {filteredSchedule.length === 0 && viewMode !== 'day' && (
             <div className="py-12 text-center text-slate-500 text-xs">
               ยังไม่มีตารางนัดหมายที่เปิดรับหรือดูแลอยู่
             </div>
@@ -307,7 +435,7 @@ function TasksComponent() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <form onSubmit={handleCreateTask} className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-semibold text-slate-100">สร้างงานหรือการนัดหมายใหม่</h3>
+            <h3 className="text-base font-semibold text-slate-100">{editingTask ? 'แก้ไขงานหรือนัดหมาย' : 'สร้างงานหรือการนัดหมายใหม่'}</h3>
             {formError && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{formError}</div>
             )}
@@ -358,7 +486,7 @@ function TasksComponent() {
                 <input 
                   type="datetime-local"
                   value={startAt}
-                  onChange={(e) => setStartAt(e.target.value)}
+                  onChange={(e) => { setStartAt(e.target.value); setTimeout(checkConflicts, 0); }}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                   required
                 />
@@ -369,12 +497,41 @@ function TasksComponent() {
                 <input 
                   type="datetime-local"
                   value={endAt}
-                  onChange={(e) => setEndAt(e.target.value)}
+                  onChange={(e) => { setEndAt(e.target.value); setTimeout(checkConflicts, 0); }}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                   required
                 />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <select value={leadId} onChange={e => setLeadId(e.target.value)} className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                <option value="">ไม่ผูก Lead</option>
+                {leads.map(lead => <option key={lead._id} value={lead._id}>{lead.schoolName}</option>)}
+              </select>
+              <select value={opportunityId} onChange={e => setOpportunityId(e.target.value)} className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                <option value="">ไม่ผูก Opportunity</option>
+                {opportunities.map(opp => <option key={opp._id} value={opp._id}>{opp.title}</option>)}
+              </select>
+              <input type="number" min="0" max="10080" value={reminderMinutesBefore} onChange={e => setReminderMinutesBefore(e.target.value)} placeholder="Reminder minutes" className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              {!editingTask && (
+                <div className="flex gap-2">
+                  <select value={recurrenceRule} onChange={e => setRecurrenceRule(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                    <option value="none">ไม่ทำซ้ำ</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  <input type="number" min="1" max="24" value={recurrenceCount} onChange={e => setRecurrenceCount(e.target.value)} className="w-20 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                </div>
+              )}
+            </div>
+
+            {conflicts.length > 0 && (
+              <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-xs text-amber-300">
+                พบเวลาชน {conflicts.length} รายการ แต่ยังสามารถบันทึกได้
+              </div>
+            )}
 
             {/* Invite coworkers checklist */}
             <div>
@@ -385,7 +542,8 @@ function TasksComponent() {
                     <input 
                       type="checkbox"
                       checked={invitedIds.includes(cw._id)}
-                      onChange={() => toggleInvite(cw._id)}
+                  onChange={() => toggleInvite(cw._id)}
+                      onBlur={checkConflicts}
                       className="rounded text-indigo-500 border-slate-800 focus:ring-indigo-500"
                     />
                     <span>{cw.name}</span>
@@ -397,7 +555,7 @@ function TasksComponent() {
             <div className="flex gap-3 justify-end pt-2">
               <button 
                 type="button"
-                onClick={() => setShowAddModal(false)}
+                onClick={() => { setShowAddModal(false); resetTaskForm(); }}
                 className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200 cursor-pointer"
               >
                 ยกเลิก
@@ -406,7 +564,7 @@ function TasksComponent() {
                 type="submit"
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer"
               >
-                บันทึกนัดหมาย
+                {editingTask ? 'บันทึกการแก้ไข' : 'บันทึกนัดหมาย'}
               </button>
             </div>
           </form>
@@ -424,6 +582,16 @@ function TasksComponent() {
                 <p className="text-xs text-slate-400 mt-1">{new Date(selectedTask.startAt).toLocaleString('th-TH')} - {new Date(selectedTask.endAt).toLocaleString('th-TH')}</p>
               </div>
               <div className="flex gap-2">
+                <button onClick={() => openEditTask(selectedTask)} className="p-2 rounded-lg border border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/10" title="แก้ไขนัดหมาย">
+                  <Edit size={14} />
+                </button>
+                <button
+                  onClick={() => setTaskCompletion(selectedTask, selectedTask.status !== 'Completed')}
+                  className="p-2 rounded-lg border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/10"
+                  title={selectedTask.status === 'Completed' ? 'Reopen task' : 'Mark complete'}
+                >
+                  <Check size={14} />
+                </button>
                 {(selectedTask.creatorId === user?._id || (user?.rank || 0) >= 4) && (
                   <button onClick={() => handleDeleteTask(selectedTask)} className="p-2 rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10" title="ลบนัดหมาย">
                     <Trash2 size={14} />
@@ -434,6 +602,18 @@ function TasksComponent() {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">{selectedTask.description || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+            {(selectedTask.leadId || selectedTask.opportunityId || selectedTask.requestId) && (
+              <div className="flex flex-wrap gap-2 text-[10px] text-slate-400">
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-800"><LinkIcon size={10} /> Lead: {selectedTask.leadId || '-'}</span>
+                {selectedTask.opportunityId && <span className="px-2 py-1 rounded border border-slate-800">Opportunity: {selectedTask.opportunityId}</span>}
+                {selectedTask.requestId && <span className="px-2 py-1 rounded border border-slate-800">Request: {selectedTask.requestId}</span>}
+              </div>
+            )}
+            {(selectedTask.recurrenceRule && selectedTask.recurrenceRule !== 'none') && (
+              <div className="inline-flex items-center gap-1 text-[10px] text-indigo-300">
+                <Repeat2 size={11} /> Recurring: {selectedTask.recurrenceRule}
+              </div>
+            )}
 
             <div>
               <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">ผู้เข้าร่วม</h4>

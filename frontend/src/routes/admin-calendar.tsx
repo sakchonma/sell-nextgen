@@ -11,6 +11,8 @@ import {
   Filter,
   Lock,
   Pencil,
+  Plus,
+  Printer,
   RefreshCw,
   Save,
   Users2,
@@ -25,7 +27,7 @@ export const Route = createRoute({
 
 type AdminCalendarEvent = {
   id: string;
-  source: 'task' | 'request';
+  source: 'task' | 'request' | 'admin';
   title: string;
   description?: string;
   type?: string;
@@ -39,6 +41,7 @@ type AdminCalendarEvent = {
   ownerName?: string;
   creatorName?: string;
   leadName?: string;
+  history?: any[];
   editable: boolean;
 };
 
@@ -51,6 +54,7 @@ type CalendarPermissions = {
 const SOURCE_LABELS = {
   task: 'Task',
   request: 'Request',
+  admin: 'Admin',
 };
 
 const DEPARTMENT_LABELS: Record<string, string> = {
@@ -108,7 +112,8 @@ function statusStyle(status: string) {
   return 'bg-amber-500/10 text-amber-300 border-amber-500/25';
 }
 
-function sourceStyle(source: 'task' | 'request') {
+function sourceStyle(source: 'task' | 'request' | 'admin') {
+  if (source === 'admin') return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300';
   if (source === 'request') return 'border-sky-500/20 bg-sky-500/10 text-sky-300';
   return 'border-violet-500/20 bg-violet-500/10 text-violet-300';
 }
@@ -119,9 +124,20 @@ function AdminCalendarComponent() {
   const [permissions, setPermissions] = useState<CalendarPermissions | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [departmentFilter, setDepartmentFilter] = useState('All');
-  const [sourceFilter, setSourceFilter] = useState<'All' | 'task' | 'request'>('All');
+  const [sourceFilter, setSourceFilter] = useState<'All' | 'task' | 'request' | 'admin'>('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [ownerFilter, setOwnerFilter] = useState('All');
   const [selectedEvent, setSelectedEvent] = useState<AdminCalendarEvent | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    title: '',
+    description: '',
+    department: 'AdminSupport',
+    ownerId: '',
+    date: dateKey(new Date()),
+    start: '09:00',
+    end: '10:00',
+  });
   const [editTitle, setEditTitle] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editStart, setEditStart] = useState('');
@@ -169,9 +185,10 @@ function AdminCalendarComponent() {
       const matchDepartment = departmentFilter === 'All' || event.department === departmentFilter;
       const matchSource = sourceFilter === 'All' || event.source === sourceFilter;
       const matchStatus = statusFilter === 'All' || event.status === statusFilter;
-      return inMonth && matchDepartment && matchSource && matchStatus;
+      const matchOwner = ownerFilter === 'All' || event.ownerId === ownerFilter;
+      return inMonth && matchDepartment && matchSource && matchStatus && matchOwner;
     });
-  }, [events, currentDate, departmentFilter, sourceFilter, statusFilter]);
+  }, [events, currentDate, departmentFilter, sourceFilter, statusFilter, ownerFilter]);
 
   const departments = useMemo(() => {
     return Array.from(new Set(events.map(event => event.department))).sort();
@@ -179,6 +196,14 @@ function AdminCalendarComponent() {
 
   const statuses = useMemo(() => {
     return Array.from(new Set(events.map(event => event.status))).sort();
+  }, [events]);
+
+  const owners = useMemo(() => {
+    const map = new Map<string, string>();
+    events.forEach(event => {
+      if (event.ownerId) map.set(event.ownerId, event.ownerName || event.ownerId);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [events]);
 
   const monthStats = useMemo(() => {
@@ -189,7 +214,6 @@ function AdminCalendarComponent() {
   }, [filteredEvents]);
 
   const openEdit = (event: AdminCalendarEvent) => {
-    if (!permissions?.canEdit) return;
     setSelectedEvent(event);
     setEditTitle(event.title);
     setEditDate(formatDateInput(event.startAt));
@@ -198,6 +222,71 @@ function AdminCalendarComponent() {
     setEditStatus(event.status);
     setEditDepartment(event.department);
     setError('');
+  };
+
+  const createEvent = (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    fetch('/api/admin-calendar/events', {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        title: createForm.title,
+        description: createForm.description,
+        department: createForm.department,
+        ownerId: createForm.ownerId || undefined,
+        startAt: new Date(`${createForm.date}T${createForm.start}`).toISOString(),
+        endAt: new Date(`${createForm.date}T${createForm.end}`).toISOString(),
+      }),
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'สร้าง event ไม่สำเร็จ');
+        }
+        return res.json();
+      })
+      .then(() => {
+        setShowCreate(false);
+        setCreateForm({ title: '', description: '', department: 'AdminSupport', ownerId: '', date: dateKey(new Date()), start: '09:00', end: '10:00' });
+        fetchEvents();
+      })
+      .catch(err => setError(err.message || 'สร้าง event ไม่สำเร็จ'))
+      .finally(() => setSaving(false));
+  };
+
+  const exportIcs = () => {
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//NEXTGEN//Admin Calendar//TH',
+      ...filteredEvents.flatMap(event => [
+        'BEGIN:VEVENT',
+        `UID:${event.source}-${event.id}@nextgen`,
+        `SUMMARY:${event.title}`,
+        `DESCRIPTION:${event.description || ''}`,
+        `DTSTART:${new Date(event.startAt).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`,
+        `DTEND:${new Date(event.endAt).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`,
+        'END:VEVENT',
+      ]),
+      'END:VCALENDAR',
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'nextgen-admin-calendar.ics';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const moveEventToDay = (eventKey: string, day: Date) => {
+    if (!permissions?.canEdit) return;
+    const event = events.find(item => `${item.source}-${item.id}` === eventKey);
+    if (!event) return;
+    openEdit(event);
+    setEditDate(dateKey(day));
   };
 
   const saveEvent = (e: FormEvent) => {
@@ -277,6 +366,20 @@ function AdminCalendarComponent() {
               <Users2 size={12} /> {departmentLabel(permissions.supportDepartment || '')}
             </span>
           )}
+          {permissions?.canEdit && (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500"
+            >
+              <Plus size={14} /> สร้าง Event
+            </button>
+          )}
+          <button onClick={() => window.print()} className="p-2 rounded-lg border border-slate-800 bg-[#121826]/60 text-slate-400 hover:text-slate-200" title="พิมพ์">
+            <Printer size={15} />
+          </button>
+          <button onClick={exportIcs} className="p-2 rounded-lg border border-slate-800 bg-[#121826]/60 text-slate-400 hover:text-slate-200" title="Export ICS">
+            <CalendarDays size={15} />
+          </button>
           <button
             onClick={fetchEvents}
             className="p-2 rounded-lg border border-slate-800 bg-[#121826]/60 text-slate-400 hover:text-slate-200"
@@ -327,7 +430,7 @@ function AdminCalendarComponent() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 xl:w-[620px]">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 xl:w-[780px]">
           <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16]/60 text-[10px] text-slate-500">
             <Filter size={12} />
             <select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} className="w-full bg-transparent text-slate-300 outline-none">
@@ -340,12 +443,19 @@ function AdminCalendarComponent() {
               <option value="All">ทุกประเภท</option>
               <option value="task">Task</option>
               <option value="request">Request</option>
+              <option value="admin">Admin Event</option>
             </select>
           </label>
           <label className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16]/60 text-[10px] text-slate-500">
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full bg-transparent text-slate-300 outline-none">
               <option value="All">ทุกสถานะ</option>
               {statuses.map(status => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16]/60 text-[10px] text-slate-500">
+            <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="w-full bg-transparent text-slate-300 outline-none">
+              <option value="All">ทุกผู้รับผิดชอบ</option>
+              {owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
             </select>
           </label>
         </div>
@@ -359,6 +469,8 @@ function AdminCalendarComponent() {
           return (
             <div
               key={day.toISOString()}
+              onDragOver={e => permissions?.canEdit && e.preventDefault()}
+              onDrop={e => moveEventToDay(e.dataTransfer.getData('text/plain'), day)}
               className={`min-h-[180px] rounded-xl border p-4 bg-[#121826]/25 ${isToday ? 'border-indigo-500/70' : 'border-slate-800/80'}`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -376,7 +488,8 @@ function AdminCalendarComponent() {
                   <button
                     key={`${event.source}-${event.id}`}
                     onClick={() => openEdit(event)}
-                    disabled={!permissions?.canEdit}
+                    draggable={permissions?.canEdit}
+                    onDragStart={e => e.dataTransfer.setData('text/plain', `${event.source}-${event.id}`)}
                     className="w-full text-left rounded-lg border border-slate-800 bg-slate-950/40 p-2 transition-all hover:border-slate-700 disabled:cursor-default disabled:hover:border-slate-800"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -406,7 +519,7 @@ function AdminCalendarComponent() {
         })}
       </div>
 
-      {selectedEvent && permissions?.canEdit && (
+      {selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <form onSubmit={saveEvent} className="w-full max-w-lg rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
             <div className="flex items-start justify-between gap-4">
@@ -414,7 +527,7 @@ function AdminCalendarComponent() {
                 <span className={`inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase ${sourceStyle(selectedEvent.source)}`}>
                   {SOURCE_LABELS[selectedEvent.source]}
                 </span>
-                <h3 className="mt-2 text-sm font-bold text-slate-100">แก้ไขแผนงาน</h3>
+                <h3 className="mt-2 text-sm font-bold text-slate-100">{permissions?.canEdit ? 'แก้ไขแผนงาน' : 'รายละเอียดแผนงาน'}</h3>
               </div>
               <button type="button" onClick={() => setSelectedEvent(null)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200" title="ปิด">
                 <X size={16} />
@@ -423,29 +536,29 @@ function AdminCalendarComponent() {
 
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
               ชื่อแผนงาน
-              <input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500" />
+              <input disabled={!permissions?.canEdit} value={editTitle} onChange={e => setEditTitle(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-70" />
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 วันที่
-                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500" />
+                <input disabled={!permissions?.canEdit} type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-70" />
               </label>
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 เริ่ม
-                <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500" />
+                <input disabled={!permissions?.canEdit} type="time" value={editStart} onChange={e => setEditStart(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-70" />
               </label>
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 สิ้นสุด
-                <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500" />
+                <input disabled={!permissions?.canEdit} type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-70" />
               </label>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 สถานะ
-                <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500">
-                  {(selectedEvent.source === 'task' ? TASK_STATUSES : REQUEST_STATUSES).map(status => (
+                <select disabled={!permissions?.canEdit} value={editStatus} onChange={e => setEditStatus(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-70">
+                  {(selectedEvent.source === 'request' ? REQUEST_STATUSES : TASK_STATUSES).map(status => (
                     <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
@@ -453,7 +566,7 @@ function AdminCalendarComponent() {
               {selectedEvent.source === 'request' && (
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                   แผนก
-                  <select value={editDepartment} onChange={e => setEditDepartment(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500">
+                  <select disabled={!permissions?.canEdit} value={editDepartment} onChange={e => setEditDepartment(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs normal-case tracking-normal text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-70">
                     {REQUEST_DEPARTMENTS.map(dept => (
                       <option key={dept} value={dept}>{departmentLabel(dept)}</option>
                     ))}
@@ -462,12 +575,58 @@ function AdminCalendarComponent() {
               )}
             </div>
 
+            {(selectedEvent.history || []).length > 0 && (
+              <div className="rounded-lg border border-slate-800 bg-[#090d16]/50 p-3 text-[10px] text-slate-400">
+                {(selectedEvent.history || []).slice(-4).map((item, idx) => (
+                  <div key={idx}>{item.fromStatus || '-'} → {item.toStatus} · {item.actorName || item.actorId}</div>
+                ))}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setSelectedEvent(null)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">
                 ยกเลิก
               </button>
-              <button disabled={saving} type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+              {permissions?.canEdit && <button disabled={saving} type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
                 <Save size={14} /> {saving ? 'กำลังบันทึก' : 'บันทึก'}
+              </button>}
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <form onSubmit={createEvent} className="w-full max-w-lg rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase border-emerald-500/20 bg-emerald-500/10 text-emerald-300">Admin</span>
+                <h3 className="mt-2 text-sm font-bold text-slate-100">สร้าง Admin Event</h3>
+              </div>
+              <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200" title="ปิด">
+                <X size={16} />
+              </button>
+            </div>
+            <input value={createForm.title} onChange={e => setCreateForm({ ...createForm, title: e.target.value })} placeholder="ชื่อแผนงาน" className="w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500" required />
+            <textarea value={createForm.description} onChange={e => setCreateForm({ ...createForm, description: e.target.value })} rows={3} placeholder="รายละเอียด" className="w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <select value={createForm.department} onChange={e => setCreateForm({ ...createForm, department: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none">
+                {REQUEST_DEPARTMENTS.map(dept => <option key={dept} value={dept}>{departmentLabel(dept)}</option>)}
+              </select>
+              <select value={createForm.ownerId} onChange={e => setCreateForm({ ...createForm, ownerId: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none">
+                <option value="">ตัวเอง</option>
+                {owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input type="date" value={createForm.date} onChange={e => setCreateForm({ ...createForm, date: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none" />
+              <input type="time" value={createForm.start} onChange={e => setCreateForm({ ...createForm, start: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none" />
+              <input type="time" value={createForm.end} onChange={e => setCreateForm({ ...createForm, end: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">ยกเลิก</button>
+              <button disabled={saving} type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+                <Save size={14} /> สร้าง
               </button>
             </div>
           </form>

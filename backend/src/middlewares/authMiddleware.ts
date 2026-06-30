@@ -1,8 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../config/security.js';
 import { Users } from '../models/db.js';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key';
 
 // Verify JWT and attach user to request
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {

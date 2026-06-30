@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { authHeaders, clearStoredAuth, decodeJwtPayload, isTokenExpired } from '../lib/api';
+import { apiJson, authHeaders, clearStoredAuth, decodeJwtPayload, isTokenExpired } from '../lib/api';
 
 export interface User {
   _id: string;
@@ -8,6 +8,7 @@ export interface User {
   rank: number;
   zone?: string;
   roleId: string;
+  forcePasswordChange?: boolean;
 }
 
 interface AuthState {
@@ -20,6 +21,7 @@ interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   swapUser: (user: User) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ user, isAuthenticated: true, isLoading: false });
   }, []);
 
-  const logout = useCallback(() => {
+  const finishLogout = useCallback(() => {
     clearStoredAuth();
     setState({
       user: null,
@@ -58,6 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading: false,
     });
   }, []);
+
+  const logout = useCallback(() => {
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: authHeaders(),
+      credentials: 'include',
+    })
+      .catch(() => undefined)
+      .finally(finishLogout);
+  }, [finishLogout]);
 
   const swapUser = useCallback(async (user: User) => {
     const res = await fetch('/api/auth/swap', {
@@ -76,6 +88,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(newUser));
     setState({ user: newUser, isAuthenticated: true, isLoading: false });
+  }, []);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    await apiJson('/api/auth/change-password', { currentPassword, newPassword });
+    setState(prev => {
+      if (!prev.user) return prev;
+      const updatedUser = { ...prev.user, forcePasswordChange: false };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      return { ...prev, user: updatedUser };
+    });
   }, []);
 
   useEffect(() => {
@@ -135,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.isAuthenticated, state.user?._id, logout]);
 
-  const value = useMemo(() => ({ ...state, login, logout, swapUser }), [state, login, logout, swapUser]);
+  const value = useMemo(() => ({ ...state, login, logout, swapUser, changePassword }), [state, login, logout, swapUser, changePassword]);
 
   return (
     <AuthContext.Provider value={value}>

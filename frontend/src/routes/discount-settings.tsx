@@ -145,6 +145,10 @@ function DiscountSettingsComponent() {
       {error && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{error}</div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.15fr] gap-6">
+        <div className="xl:col-span-2 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4 text-xs text-indigo-200">
+          Approval matrix: ส่วนลดที่เกินลิมิต Sales จะเข้า Manager approval และถ้าสูงกว่าลิมิต Manager จะต้องให้ Exec/Rank 5 อนุมัติเท่านั้น
+          {user && user.rank < 5 && <span className="block mt-1 text-amber-200">บัญชี Manager/Finance แก้ได้เฉพาะ Sales role limit และ individual limit ของ Sales</span>}
+        </div>
         <div className="rounded-xl border border-slate-800 bg-[#121826]/40 overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
             <Percent size={15} className="text-indigo-400" />

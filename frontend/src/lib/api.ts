@@ -1,7 +1,16 @@
+function getCookie(name: string) {
+  return document.cookie
+    .split('; ')
+    .find(row => row.startsWith(`${name}=`))
+    ?.split('=')[1] || '';
+}
+
 export function authHeaders(extra: HeadersInit = {}): HeadersInit {
   const token = localStorage.getItem('token') || '';
+  const csrfToken = getCookie('csrfToken');
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(csrfToken ? { 'X-CSRF-Token': decodeURIComponent(csrfToken) } : {}),
     ...extra
   };
 }

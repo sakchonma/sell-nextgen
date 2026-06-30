@@ -5,8 +5,24 @@ export interface User {
   passwordHash: string;
   roleId: string;
   rank: number;
+  status?: 'active' | 'inactive' | 'suspended';
   zone?: string;
   avatarUrl?: string;
+  lastLoginAt?: Date;
+  passwordChangedAt?: Date;
+  forcePasswordChange?: boolean;
+  notificationPreferences?: {
+    categories?: {
+      Request?: boolean;
+      Quote?: boolean;
+      Task?: boolean;
+      Calendar?: boolean;
+      System?: boolean;
+    };
+    digestOnly?: boolean;
+  };
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +56,9 @@ export interface Lead {
   zone: string;
   status: 'Cold' | 'Warm' | 'Hot' | 'Customer';
   score: number;
+  source?: string;
+  campaign?: string;
+  archived?: boolean;
   contacts: Array<{
     name: string;
     position: string;
@@ -47,10 +66,25 @@ export interface Lead {
     email?: string;
   }>;
   assignedTo: string;
+  assignmentHistory?: Array<{
+    fromUserId?: string;
+    toUserId: string;
+    changedBy: string;
+    reason?: string;
+    changedAt: Date;
+  }>;
   notes: Array<{
     author: string;
     content: string;
+    type?: 'General' | 'Call' | 'Meeting' | 'Coaching' | 'FollowUp';
     createdAt: Date;
+  }>;
+  attachments?: Array<{
+    name: string;
+    url: string;
+    type?: string;
+    uploadedAt: Date;
+    uploadedBy?: string;
   }>;
   createdAt: Date;
   updatedAt: Date;
@@ -64,6 +98,16 @@ export interface Opportunity {
   value: number;
   closeDate: Date;
   assignedTo: string;
+  probability?: number;
+  lostReason?: string;
+  quoteIds?: string[];
+  stageHistory?: Array<{
+    fromStage?: string;
+    toStage: string;
+    changedBy: string;
+    reason?: string;
+    changedAt: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,6 +121,11 @@ export interface Task {
   startAt: Date;
   endAt: Date;
   leadId?: string;
+  opportunityId?: string;
+  requestId?: string;
+  reminderAt?: Date;
+  recurrenceId?: string;
+  recurrenceRule?: 'none' | 'daily' | 'weekly' | 'monthly';
   creatorId: string;
   participants: Array<{
     userId: string;
@@ -97,6 +146,7 @@ export interface Task {
 export interface Quotation {
   _id: string;
   quoteNumber: string;
+  version?: number;
   leadId: string;
   items: Array<{
     productId: string;
@@ -110,8 +160,33 @@ export interface Quotation {
   totalAmount: number;
   status: 'Draft' | 'PendingApproval' | 'Approved' | 'Rejected';
   creatorId: string;
+  requiredApprovalRank?: 4 | 5;
   approvedById?: string;
   rejectionReason?: string;
+  approvalTrail?: Array<{
+    status: 'Approved' | 'Rejected' | 'PendingApproval';
+    actorId: string;
+    actorName?: string;
+    reason?: string;
+    decidedAt: Date;
+  }>;
+  revisions?: Array<{
+    version: number;
+    changedBy: string;
+    changedAt: Date;
+    reason?: string;
+    snapshot: Record<string, unknown>;
+  }>;
+  sentAt?: Date;
+  sentById?: string;
+  sentToEmail?: string;
+  emailStatus?: 'Draft' | 'Queued' | 'Sent' | 'Failed';
+  expiresAt?: Date;
+  terms?: string;
+  signatureStatus?: 'Pending' | 'Accepted' | 'Declined';
+  acceptedAt?: Date;
+  acceptedByName?: string;
+  convertedOpportunityId?: string;
   discountLimitChecked: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -128,9 +203,32 @@ export interface Request {
   targetDepartment: 'AdminSupport' | 'Finance' | 'Academic' | 'Production';
   targetUserId?: string;
   reason: string;
+  priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
+  slaDueAt?: Date;
+  isDraft?: boolean;
+  attachments?: Array<{
+    name: string;
+    url?: string;
+    uploadedBy: string;
+    uploadedAt: Date;
+  }>;
+  comments?: Array<{
+    authorId: string;
+    authorName: string;
+    content: string;
+    createdAt: Date;
+  }>;
+  statusHistory?: Array<{
+    fromStatus?: string;
+    toStatus: string;
+    actorId: string;
+    actorName?: string;
+    reason?: string;
+    changedAt: Date;
+  }>;
   startAt: Date;
   endAt: Date;
-  status: 'Submitted' | 'Approved' | 'Rejected' | 'Acknowledged' | 'Claimed' | 'Completed';
+  status: 'Draft' | 'Submitted' | 'Approved' | 'Rejected' | 'Acknowledged' | 'Claimed' | 'Completed';
   approvalFlow: {
     status: 'Pending' | 'Approved' | 'Rejected';
     approvedById?: string;
@@ -166,6 +264,14 @@ export interface Product {
   category: string;
   specialOffers?: string;
   isActive: boolean;
+  priceHistory?: Array<{
+    price: number;
+    changedBy: string;
+    changedAt: Date;
+    reason?: string;
+  }>;
+  deletedAt?: Date;
+  deletedBy?: string;
 }
 
 export interface DiscountLimit {
@@ -206,6 +312,19 @@ export interface AILog {
   leadId?: string;
   taskId?: string;
   status: 'Parsed' | 'Confirmed';
+  promptVersion?: string;
+  provider?: 'gemini' | 'fallback';
+  usage?: {
+    inputChars: number;
+    estimatedTokens: number;
+    latencyMs?: number;
+    estimatedCostUsd?: number;
+  };
+  guardrails?: {
+    requiresReview: boolean;
+    reviewReasons: string[];
+    confirmedBy?: string;
+  };
   createdAt: Date;
   confirmedAt?: Date;
 }
@@ -217,6 +336,22 @@ export interface Notification {
   message: string;
   type: 'RequestApproval' | 'RequestStatus' | 'CalendarInvite' | 'TaskStatus' | 'QuoteApproval' | 'QuoteStatus';
   targetUrl: string;
+  category?: 'Request' | 'Quote' | 'Task' | 'Calendar' | 'System';
   isRead: boolean;
+  archivedAt?: Date;
+  createdAt: Date;
+}
+
+export interface AuditLog {
+  _id: string;
+  actorId: string;
+  actorEmail: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  targetEmail?: string;
+  details?: Record<string, unknown>;
+  ip?: string;
+  userAgent?: string;
   createdAt: Date;
 }

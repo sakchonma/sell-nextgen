@@ -153,12 +153,12 @@ function DashboardComponent() {
       {/* METRICS GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: 'Pipeline ทั้งหมด (Active)', val: metrics.pipelineActive, desc: 'ดีลกำลังดำเนินการเสนอขาย', icon: TrendingUp, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
-          { title: 'ปิดการขายได้ (Won)', val: metrics.wonDeals, desc: 'สะสมในรอบปีการขายปัจจุบัน', icon: CheckCircle, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-          { title: 'Hot Leads ในมือ', val: metrics.hotLeads, desc: 'โรงเรียนระดับความเร่งด่วนสูง', icon: Zap, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-          { title: 'งานเกินกำหนด (Overdue)', val: metrics.overdueTasks, desc: 'งานรอดำเนินการที่เลยเวลาส่ง', icon: AlertCircle, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' }
+          { title: 'Pipeline ทั้งหมด (Active)', val: metrics.pipelineActive, desc: 'ดีลกำลังดำเนินการเสนอขาย', icon: TrendingUp, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', to: '/pipeline' },
+          { title: 'ปิดการขายได้ (Won)', val: metrics.wonDeals, desc: 'สะสมในรอบปีการขายปัจจุบัน', icon: CheckCircle, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', to: '/pipeline' },
+          { title: 'Hot Leads ในมือ', val: metrics.hotLeads, desc: 'โรงเรียนระดับความเร่งด่วนสูง', icon: Zap, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', to: '/leads' },
+          { title: 'งานเกินกำหนด (Overdue)', val: metrics.overdueTasks, desc: 'งานรอดำเนินการที่เลยเวลาส่ง', icon: AlertCircle, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20', to: '/tasks' }
         ].map((item, idx) => (
-          <div key={idx} className="p-5 rounded-2xl glass-card flex flex-col justify-between h-32">
+          <Link key={idx} to={item.to as any} className="p-5 rounded-2xl glass-card flex flex-col justify-between h-32 hover:border-indigo-500/30 transition-all">
             <div className="flex justify-between items-start">
               <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{item.title}</span>
               <div className={`p-2 rounded-lg border ${item.color}`}>
@@ -169,7 +169,7 @@ function DashboardComponent() {
               <span className="block font-display font-bold text-lg text-slate-100">{item.val}</span>
               <span className="block text-[9.5px] text-slate-500 mt-1">{item.desc}</span>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 

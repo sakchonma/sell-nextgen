@@ -58,11 +58,15 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
   const vat = beforeVat * (Number(quote.vatPercent || 0) / 100);
 
   const lines = [
-    'NEXTGEN Sale & Support',
-    `Quotation: ${quote.quoteNumber}`,
+    'NEXTGEN Sale & Support Co., Ltd.',
+    'Official Quotation Document',
+    `Document No: ${quote.quoteNumber} / Rev.${quote.version || 1}`,
     `Customer: ${lead?.schoolName || quote.leadId || '-'}`,
     `Status: ${quote.status}`,
+    `Email status: ${quote.emailStatus || 'Draft'}`,
+    `Acceptance: ${quote.signatureStatus || 'Pending'}`,
     `Created: ${new Date(quote.createdAt).toLocaleDateString('en-GB')}`,
+    `Valid until: ${quote.expiresAt ? new Date(quote.expiresAt).toLocaleDateString('en-GB') : '-'}`,
     '',
     'Items',
     ...quote.items.map((item: any, index: number) =>
@@ -72,7 +76,10 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
     `Subtotal: ${money(subtotal)}`,
     `Overall discount (${quote.overallDiscountPercent}%): ${money(overallDiscount)}`,
     `VAT (${quote.vatPercent}%): ${money(vat)}`,
-    `Grand total: ${money(quote.totalAmount)}`
+    `Grand total: ${money(quote.totalAmount)}`,
+    '',
+    `Terms: ${quote.terms || '-'}`,
+    `Prepared by NEXTGEN. This document number is controlled by the sale support system.`
   ];
 
   const pdf = buildPdf(lines);

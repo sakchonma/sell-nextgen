@@ -2,7 +2,8 @@ import { createRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
-import { Edit2, Package, Plus, Search, Trash2, X } from 'lucide-react';
+import { Download, Edit2, Package, Plus, Search, Tags, Trash2, Upload, X } from 'lucide-react';
+import { PaginationControls } from '../components/ui';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -32,18 +33,27 @@ function ProductsComponent() {
   const [products, setProducts] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [form, setForm] = useState(emptyProduct);
+  const [categoryForm, setCategoryForm] = useState({ previousName: '', name: '' });
+  const [importText, setImportText] = useState('');
   const [error, setError] = useState('');
 
   const canManage = (user?.rank || 0) >= 4;
 
   const fetchProducts = () => {
-    const params = new URLSearchParams({ search, category, limit: '100' });
+    const params = new URLSearchParams({ search, category, page: String(page), limit: '25' });
     fetch(`/api/products?${params.toString()}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
       .then(res => res.json())
-      .then(data => setProducts(Array.isArray(data.data) ? data.data : []))
+      .then(data => {
+        setProducts(Array.isArray(data.data) ? data.data : []);
+        setTotal(Number(data.total || 0));
+      })
       .catch(err => {
         console.error('Failed to load products:', err);
         setError('โหลดข้อมูลสินค้าไม่สำเร็จ');
@@ -52,12 +62,88 @@ function ProductsComponent() {
 
   useEffect(() => {
     fetchProducts();
+  }, [search, category, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [search, category]);
 
   const categories = useMemo(() => {
     const values = products.map(p => p.category).filter(Boolean);
     return ['All', ...Array.from(new Set(['Coding', 'Hardware', 'Software', 'Service', ...values]))];
   }, [products]);
+
+  const exportProducts = () => {
+    window.open('/api/products/export.csv', '_blank');
+  };
+
+  const parseImportRows = () => {
+    return importText
+      .split('\n')
+      .map(row => row.trim())
+      .filter(Boolean)
+      .map(row => {
+        const [name, categoryValue, price, description, specialOffers] = row.split(',').map(cell => cell.trim());
+        return {
+          name,
+          category: categoryValue || 'General',
+          price: Number(price || 0),
+          description: description || '',
+          specialOffers: specialOffers || '',
+          isActive: true,
+        };
+      })
+      .filter(row => row.name);
+  };
+
+  const importProducts = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rows = parseImportRows();
+    if (rows.length === 0) {
+      setError('ไม่พบข้อมูลสินค้าที่ import ได้');
+      return;
+    }
+    fetch('/api/products/import', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ products: rows }),
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'Import สินค้าไม่สำเร็จ');
+        }
+        return res.json();
+      })
+      .then(() => {
+        setShowImportModal(false);
+        setImportText('');
+        fetchProducts();
+      })
+      .catch(err => setError(err.message));
+  };
+
+  const saveCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetch('/api/products/categories', {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(categoryForm),
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'บันทึกหมวดหมู่ไม่สำเร็จ');
+        }
+        return res.json();
+      })
+      .then(() => {
+        setShowCategoryModal(false);
+        setCategoryForm({ previousName: '', name: '' });
+        fetchProducts();
+      })
+      .catch(err => setError(err.message));
+  };
 
   const openCreate = () => {
     setEditingProduct(null);
@@ -132,12 +218,23 @@ function ProductsComponent() {
         </div>
 
         {canManage && (
-          <button
-            onClick={openCreate}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
-          >
-            <Plus size={14} /> เพิ่มสินค้า
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setShowCategoryModal(true)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+              <Tags size={14} /> หมวดหมู่
+            </button>
+            <button onClick={exportProducts} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+              <Download size={14} /> Export
+            </button>
+            <button onClick={() => setShowImportModal(true)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+              <Upload size={14} /> Import
+            </button>
+            <button
+              onClick={openCreate}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
+            >
+              <Plus size={14} /> เพิ่มสินค้า
+            </button>
+          </div>
         )}
       </div>
 
@@ -185,6 +282,7 @@ function ProductsComponent() {
                 <td className="px-4 py-3">
                   <div className="font-semibold text-slate-200">{product.name}</div>
                   <div className="text-[10px] text-slate-500 mt-1 max-w-xl truncate">{product.description || product.specialOffers || '-'}</div>
+                  {product.priceHistory?.length > 1 && <div className="text-[9px] text-amber-300 mt-1">มีประวัติราคา {product.priceHistory.length} ครั้ง</div>}
                 </td>
                 <td className="px-4 py-3 text-slate-400">{product.category}</td>
                 <td className="px-4 py-3 text-right font-semibold text-slate-200">{Number(product.price || 0).toLocaleString('th-TH')} ฿</td>
@@ -215,6 +313,8 @@ function ProductsComponent() {
           </tbody>
         </table>
       </div>
+
+      <PaginationControls page={page} total={total} limit={25} onPageChange={setPage} />
 
       {showModal && canManage && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -251,11 +351,70 @@ function ProductsComponent() {
                 <input type="checkbox" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} className="accent-indigo-500" />
                 เปิดให้เลือกในใบเสนอราคา
               </label>
+              {editingProduct?.priceHistory?.length > 0 && (
+                <div className="md:col-span-2 rounded-lg border border-slate-800 bg-[#090d16]/50 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Price history</div>
+                  <div className="max-h-28 overflow-y-auto space-y-1 text-[10px] text-slate-400">
+                    {editingProduct.priceHistory.slice(-6).reverse().map((item: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between gap-2">
+                        <span>{Number(item.price || 0).toLocaleString('th-TH')} ฿</span>
+                        <span>{item.changedAt ? new Date(item.changedAt).toLocaleString('th-TH') : '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={closeModal} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">ยกเลิก</button>
               <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg">บันทึกสินค้า</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showImportModal && canManage && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form onSubmit={importProducts} className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-slate-100">Import สินค้าจาก CSV</h3>
+              <button type="button" onClick={() => setShowImportModal(false)} className="text-slate-500 hover:text-slate-200" title="ปิด">
+                <X size={18} />
+              </button>
+            </div>
+            <textarea
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+              rows={8}
+              placeholder="ชื่อสินค้า,หมวดหมู่,ราคา,คำอธิบาย,ข้อเสนอพิเศษ"
+              className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+            />
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setShowImportModal(false)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">ยกเลิก</button>
+              <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">Import</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showCategoryModal && canManage && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form onSubmit={saveCategory} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-slate-100">จัดการหมวดหมู่สินค้า</h3>
+              <button type="button" onClick={() => setShowCategoryModal(false)} className="text-slate-500 hover:text-slate-200" title="ปิด">
+                <X size={18} />
+              </button>
+            </div>
+            <select value={categoryForm.previousName} onChange={e => setCategoryForm({ ...categoryForm, previousName: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none">
+              <option value="">สร้างหมวดใหม่</option>
+              {categories.filter(item => item !== 'All').map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <input value={categoryForm.name} onChange={e => setCategoryForm({ ...categoryForm, name: e.target.value })} placeholder="ชื่อหมวดหมู่ใหม่" className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" required />
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setShowCategoryModal(false)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">ยกเลิก</button>
+              <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">บันทึกหมวดหมู่</button>
             </div>
           </form>
         </div>

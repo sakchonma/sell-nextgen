@@ -23,13 +23,21 @@ export const Route = createRoute({
 function LeadsIndexComponent() {
   const { user } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [selectedZone, setSelectedZone] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
+  const [selectedOwner, setSelectedOwner] = useState('All');
+  const [minScore, setMinScore] = useState('');
+  const [maxScore, setMaxScore] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadAddress, setNewLeadAddress] = useState('');
   const [newLeadZone, setNewLeadZone] = useState('ภาคเหนือ');
+  const [newLeadSource, setNewLeadSource] = useState('Outbound');
+  const [newLeadCampaign, setNewLeadCampaign] = useState('');
+  const [leadError, setLeadError] = useState('');
+  const [leadMessage, setLeadMessage] = useState('');
   const [updatingLeadId, setUpdatingLeadId] = useState('');
 
   const fetchLeads = () => {
@@ -40,24 +48,53 @@ function LeadsIndexComponent() {
 
   useEffect(() => {
     fetchLeads();
+    apiFetch('/api/users').then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
   }, [user]);
 
   const handleAddLead = (e: React.FormEvent) => {
     e.preventDefault();
+    setLeadError('');
+    setLeadMessage('');
     apiJson('/api/leads', {
       schoolName: newLeadName,
       address: newLeadAddress,
       zone: newLeadZone,
       status: 'Cold',
-      score: 10
+      score: 10,
+      source: newLeadSource,
+      campaign: newLeadCampaign || undefined
     })
       .then(() => {
         setShowAddModal(false);
         setNewLeadName('');
         setNewLeadAddress('');
+        setNewLeadCampaign('');
         fetchLeads();
       })
-      .catch(err => console.error('Failed to add lead: ' + err));
+      .catch(err => setLeadError(err.message || 'เพิ่มลีดไม่สำเร็จ'));
+  };
+
+  const handleImportCsv = async (file?: File) => {
+    if (!file) return;
+    setLeadError('');
+    setLeadMessage('');
+    try {
+      const text = await file.text();
+      const res = await fetch('/api/leads/import.csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/csv',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`
+        },
+        body: text
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Import CSV ไม่สำเร็จ');
+      setLeadMessage(`Import สำเร็จ ${data.imported} รายการ${data.skipped?.length ? `, ข้าม ${data.skipped.length} รายการ` : ''}`);
+      fetchLeads();
+    } catch (err: any) {
+      setLeadError(err.message || 'Import CSV ไม่สำเร็จ');
+    }
   };
 
   const handleStatusChange = (lead: any, status: string) => {
@@ -90,9 +127,14 @@ function LeadsIndexComponent() {
                               l.address.toLowerCase().includes(search.toLowerCase());
         const matchesZone = selectedZone === 'All' || l.zone === selectedZone;
         const matchesStatus = selectedStatus === 'All' || l.status === selectedStatus;
-        return matchesSearch && matchesZone && matchesStatus;
+        const matchesOwner = selectedOwner === 'All' || l.assignedTo === selectedOwner;
+        const matchesMinScore = !minScore || Number(l.score || 0) >= Number(minScore);
+        const matchesMaxScore = !maxScore || Number(l.score || 0) <= Number(maxScore);
+        return matchesSearch && matchesZone && matchesStatus && matchesOwner && matchesMinScore && matchesMaxScore;
       })
     : [];
+
+  const ownerName = (ownerId?: string) => users.find(item => item._id === ownerId)?.name || 'ไม่ระบุผู้ดูแล';
 
   return (
     <div className="space-y-6 animate-fade-in text-slate-100">
@@ -104,13 +146,28 @@ function LeadsIndexComponent() {
           </h2>
           <p className="text-xs text-slate-400 mt-1">บริหารจัดการข้อมูลโรงเรียนและรายชื่อผู้ติดต่อที่กำลังดูแลเสนอขาย</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-        >
-          <Plus size={14} /> เพิ่มข้อมูลโรงเรียน
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <label className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-200 border border-slate-700 cursor-pointer">
+            Import CSV
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => handleImportCsv(e.target.files?.[0])} />
+          </label>
+          <a
+            href="/api/leads/export.csv"
+            className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-200 border border-slate-700"
+          >
+            Export CSV
+          </a>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+          >
+            <Plus size={14} /> เพิ่มข้อมูลโรงเรียน
+          </button>
+        </div>
       </div>
+
+      {leadMessage && <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">{leadMessage}</div>}
+      {leadError && !showAddModal && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{leadError}</div>}
 
       {/* SEARCH AND FILTERS */}
       <div className="p-4 rounded-xl border border-slate-800 bg-[#121826]/40 flex flex-wrap gap-4 items-center">
@@ -156,6 +213,26 @@ function LeadsIndexComponent() {
             <option value="Hot">Hot</option>
           </select>
         </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 flex items-center gap-1"><UserCheck size={12} /> ผู้ดูแล:</span>
+          <select
+            value={selectedOwner}
+            onChange={(e) => setSelectedOwner(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-300 focus:outline-none"
+          >
+            <option value="All">ทุกคน</option>
+            {users.map(item => (
+              <option key={item._id} value={item._id}>{item.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">Score:</span>
+          <input value={minScore} onChange={e => setMinScore(e.target.value)} type="number" min="0" max="100" placeholder="min" className="w-20 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-300" />
+          <input value={maxScore} onChange={e => setMaxScore(e.target.value)} type="number" min="0" max="100" placeholder="max" className="w-20 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-300" />
+        </div>
       </div>
 
       {/* LEADS LIST */}
@@ -197,8 +274,13 @@ function LeadsIndexComponent() {
               {/* Contacts count */}
               <div className="text-[11px] text-slate-400 mt-4 flex items-center gap-1">
                 <UserCheck size={12} className="text-slate-500" />
-                <span>จำนวนผู้ติดต่อ: {lead.contacts?.length || 0} คน</span>
+                <span>{ownerName(lead.assignedTo)} · ผู้ติดต่อ {lead.contacts?.length || 0} คน</span>
               </div>
+              {(lead.source || lead.campaign) && (
+                <div className="text-[10px] text-slate-500 mt-2">
+                  Source: {lead.source || '-'} {lead.campaign ? `· ${lead.campaign}` : ''}
+                </div>
+              )}
             </div>
 
             {/* Score slide / representative */}
@@ -234,6 +316,7 @@ function LeadsIndexComponent() {
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <form onSubmit={handleAddLead} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มลีดโรงเรียนเป้าหมายใหม่</h3>
+            {leadError && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{leadError}</div>}
             
             <div>
               <label className="block text-xs text-slate-400 font-semibold mb-1">ชื่อโรงเรียน</label>
@@ -272,6 +355,23 @@ function LeadsIndexComponent() {
                 <option value="ภาคตะวันตก">ภาคตะวันตก</option>
                 <option value="ภาคอีสาน">ภาคอีสาน</option>
               </select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">Source</label>
+                <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  <option value="Outbound">Outbound</option>
+                  <option value="Referral">Referral</option>
+                  <option value="Event">Event</option>
+                  <option value="Website">Website</option>
+                  <option value="Existing Customer">Existing Customer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">Campaign</label>
+                <input value={newLeadCampaign} onChange={e => setNewLeadCampaign(e.target.value)} placeholder="เช่น Coding Roadshow" className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              </div>
             </div>
 
             <div className="flex gap-3 justify-end pt-2">

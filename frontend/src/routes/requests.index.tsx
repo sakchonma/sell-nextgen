@@ -8,9 +8,12 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  Eye,
   Forward,
+  MessageSquare,
   Plus,
   RefreshCw,
+  Search,
   X,
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
@@ -48,6 +51,12 @@ function RequestsIndexComponent() {
   const [forwardReason, setForwardReason] = useState('');
   const [declineRequest, setDeclineRequest] = useState<any | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
+  const [detailComment, setDetailComment] = useState('');
+  const [completionNote, setCompletionNote] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [error, setError] = useState('');
 
   const fetchData = () => {
@@ -86,12 +95,26 @@ function RequestsIndexComponent() {
   const mine = requests.filter(item => item.creatorId === user?._id || item.assignment?.assignedToId === user?._id);
 
   const visibleRequests = useMemo(() => {
-    if (activeTab === 'approval') return pendingApprovals;
-    if (activeTab === 'claim') return claimQueue;
-    if (activeTab === 'mine') return mine;
-    if (activeTab === 'ack') return ackQueue;
-    return requests;
-  }, [activeTab, requests, pendingApprovals, claimQueue, mine, ackQueue]);
+    const base = activeTab === 'approval'
+      ? pendingApprovals
+      : activeTab === 'claim'
+        ? claimQueue
+        : activeTab === 'mine'
+          ? mine
+          : activeTab === 'ack'
+            ? ackQueue
+            : requests;
+    const needle = searchText.trim().toLowerCase();
+    return base.filter(item => {
+      const matchesSearch = !needle || [item.requestNumber, item.title, item.reason, getLeadName(item.leadId), getUserName(item.creatorId)]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle);
+      const matchesDepartment = departmentFilter === 'All' || item.targetDepartment === departmentFilter;
+      const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
+      return matchesSearch && matchesDepartment && matchesStatus;
+    });
+  }, [activeTab, requests, pendingApprovals, claimQueue, mine, ackQueue, searchText, departmentFilter, statusFilter, leads, users]);
 
   const runAction = (url: string, body: any = {}, method = 'PUT') => {
     setError('');
@@ -104,6 +127,28 @@ function RequestsIndexComponent() {
   const rejectRequest = (id: string) => runAction(`/api/requests/${id}/approve`, { status: 'Rejected', reason: 'Rejected from approval dashboard' });
   const claimRequest = (id: string) => runAction(`/api/requests/${id}/claim`);
   const ackRequest = (id: string) => runAction(`/api/requests/${id}/ack`);
+
+  const openRequestDetail = (request: any) => {
+    apiFetch(`/api/requests/${request._id}`)
+      .then(data => {
+        setSelectedRequest(data);
+        setDetailComment('');
+        setCompletionNote('');
+      })
+      .catch(err => setError(err.message));
+  };
+
+  const addComment = () => {
+    if (!selectedRequest || !detailComment.trim()) return;
+    runAction(`/api/requests/${selectedRequest._id}/comments`, { content: detailComment }, 'POST')
+      .then(() => openRequestDetail(selectedRequest));
+  };
+
+  const completeRequest = () => {
+    if (!selectedRequest) return;
+    runAction(`/api/requests/${selectedRequest._id}/complete`, { note: completionNote })
+      .then(() => openRequestDetail(selectedRequest));
+  };
 
   const submitDecline = (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,6 +214,21 @@ function RequestsIndexComponent() {
         ))}
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_180px_180px] gap-2">
+        <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16]/60 text-[10px] text-slate-500">
+          <Search size={12} />
+          <input value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="ค้นหาเลขคำขอ หัวข้อ โรงเรียน ผู้สร้าง..." className="w-full bg-transparent text-xs text-slate-300 outline-none" />
+        </label>
+        <select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16]/60 text-xs text-slate-300 outline-none">
+          <option value="All">ทุกแผนก</option>
+          {DEPARTMENTS.map(dept => <option key={dept.id} value={dept.id}>{dept.label}</option>)}
+        </select>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16]/60 text-xs text-slate-300 outline-none">
+          <option value="All">ทุกสถานะ</option>
+          {Array.from(new Set(requests.map(item => item.status))).map(status => <option key={status} value={status}>{status}</option>)}
+        </select>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {visibleRequests.map(request => {
           const canApprove = user && user.rank >= 4 && request.approvalFlow?.status === 'Pending';
@@ -183,6 +243,7 @@ function RequestsIndexComponent() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-black tracking-widest text-slate-500">{request.requestNumber}</span>
                     <span className={`px-2 py-0.5 rounded text-[9px] border font-bold ${statusStyle(request.status)}`}>{request.status}</span>
+                    {request.priority && <span className="px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-300 border border-slate-700">{request.priority}</span>}
                   </div>
                   <h3 className="text-sm font-bold text-slate-100 mt-2">{request.title}</h3>
                   <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{request.reason || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
@@ -221,6 +282,9 @@ function RequestsIndexComponent() {
               )}
 
               <div className="flex flex-wrap gap-2 border-t border-slate-800 pt-4">
+                <button onClick={() => openRequestDetail(request)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-semibold hover:bg-slate-700">
+                  <Eye size={12} /> รายละเอียด
+                </button>
                 {canApprove && (
                   <>
                     <button onClick={() => approveRequest(request._id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold hover:bg-emerald-500/20">
@@ -289,6 +353,81 @@ function RequestsIndexComponent() {
               <button type="submit" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs font-semibold text-white">ยืนยันปฏิเสธ</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {selectedRequest && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black tracking-widest text-slate-500">{selectedRequest.requestNumber}</span>
+                  <span className={`px-2 py-0.5 rounded text-[9px] border font-bold ${statusStyle(selectedRequest.status)}`}>{selectedRequest.status}</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-300 border border-slate-700">{selectedRequest.priority || 'Medium'}</span>
+                </div>
+                <h3 className="text-base font-semibold text-slate-100 mt-2">{selectedRequest.title}</h3>
+                <p className="text-xs text-slate-400 mt-1">SLA {selectedRequest.slaDueAt ? new Date(selectedRequest.slaDueAt).toLocaleString('th-TH') : '-'} · {getDeptLabel(selectedRequest.targetDepartment)}</p>
+              </div>
+              <button onClick={() => setSelectedRequest(null)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200" title="ปิด">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-800 bg-[#121826]/40 p-4 space-y-3 text-xs">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">รายละเอียด</h4>
+                <p className="text-slate-300 whitespace-pre-wrap">{selectedRequest.reason || '-'}</p>
+                <div className="grid grid-cols-2 gap-2 text-[10.5px] text-slate-400">
+                  <div>ผู้สร้าง: <span className="text-slate-200">{selectedRequest.creator?.name || getUserName(selectedRequest.creatorId)}</span></div>
+                  <div>ผู้รับงาน: <span className="text-slate-200">{selectedRequest.assignee?.name || getUserName(selectedRequest.assignment?.assignedToId)}</span></div>
+                  <div>โรงเรียน: <span className="text-slate-200">{selectedRequest.lead?.schoolName || getLeadName(selectedRequest.leadId)}</span></div>
+                  <div>เวลา: <span className="text-slate-200">{new Date(selectedRequest.startAt).toLocaleString('th-TH')}</span></div>
+                </div>
+                {(selectedRequest.attachments || []).map((item: any, idx: number) => (
+                  <a key={idx} href={item.url || '#'} target="_blank" className="block rounded-lg border border-slate-800 bg-[#090d16]/50 p-2 text-indigo-300 hover:text-indigo-200">
+                    {item.name}
+                  </a>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-[#121826]/40 p-4 space-y-3">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Comment thread</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {(selectedRequest.comments || []).length === 0 && <div className="py-6 text-center text-[10px] text-slate-600">ยังไม่มีความคิดเห็น</div>}
+                  {(selectedRequest.comments || []).map((item: any, idx: number) => (
+                    <div key={idx} className="p-3 rounded-lg bg-[#090d16]/60 border border-slate-800 text-xs">
+                      <div className="text-[10px] text-slate-500">{item.authorName} · {new Date(item.createdAt).toLocaleString('th-TH')}</div>
+                      <div className="mt-1 text-slate-300">{item.content}</div>
+                    </div>
+                  ))}
+                </div>
+                <textarea value={detailComment} onChange={e => setDetailComment(e.target.value)} rows={2} placeholder="เพิ่มความคิดเห็น..." className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 outline-none" />
+                <button onClick={addComment} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500">
+                  <MessageSquare size={13} /> เพิ่มความคิดเห็น
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-[10.5px] text-slate-400">
+              <div className="rounded-xl border border-slate-800 bg-[#121826]/40 p-4">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Forward / Status history</h4>
+                {(selectedRequest.assignment?.forwardHistory || []).map((item: any, idx: number) => (
+                  <div key={`f-${idx}`} className="py-1">{getDeptLabel(item.fromDepartment)} → {getDeptLabel(item.toDepartment)} · {item.reason || '-'}</div>
+                ))}
+                {(selectedRequest.statusHistory || []).map((item: any, idx: number) => (
+                  <div key={`s-${idx}`} className="py-1">{item.fromStatus || '-'} → {item.toStatus} · {item.actorName || item.actorId}</div>
+                ))}
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-[#121826]/40 p-4 space-y-3">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Completion flow</h4>
+                <textarea value={completionNote} onChange={e => setCompletionNote(e.target.value)} rows={3} placeholder="บันทึกผลลัพธ์หลังดำเนินงาน..." className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 outline-none" />
+                <button disabled={selectedRequest.status !== 'Claimed'} onClick={completeRequest} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
+                  <CheckCircle2 size={13} /> ปิดงานเป็น Completed
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
