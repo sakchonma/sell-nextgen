@@ -24,7 +24,11 @@ import {
   Users2,
   EyeOff,
   SlidersHorizontal,
-  Archive
+  Archive,
+  Menu,
+  X,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
 export const Route = createRootRoute({
@@ -48,6 +52,8 @@ function RootComponent() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordChangeError, setPasswordChangeError] = useState('');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
   // Load 14 test users for quick swap
   useEffect(() => {
@@ -157,6 +163,21 @@ function RootComponent() {
   const requestUnreadCount = notifications.filter(n => !n.isRead && String(n.type).startsWith('Request')).length;
   const quoteUnreadCount = notifications.filter(n => !n.isRead && String(n.type).startsWith('Quote')).length;
 
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const previousOverflow = document.body.style.overflow;
+    if (isMobileSidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileSidebarOpen]);
+
   const markAllNotificationsRead = () => {
     apiJson('/api/notifications/read-all', {}, { method: 'PUT' })
       .then(() => setNotifications(prev => prev.map(item => ({ ...item, isRead: true }))))
@@ -204,162 +225,193 @@ function RootComponent() {
       .catch((err) => setPasswordChangeError(err.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ'));
   };
 
+  const renderSidebarNav = (collapsed: boolean, onNavigate: () => void) => (
+    <nav className={`p-3 lg:p-4 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden lg:max-h-[calc(100vh-170px)] ${collapsed ? 'lg:flex lg:flex-col lg:gap-1.5' : 'lg:block'}`}>
+      <Link
+        to="/dashboard"
+        activeProps={{ className: 'bg-indigo-600/20 text-indigo-400 border-l-2 border-indigo-500' }}
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <LayoutDashboard size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>แผงควบคุม (Dashboard)</span>
+      </Link>
+
+      <Link
+        to="/leads"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <Users size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>Leads & โรงเรียน</span>
+      </Link>
+
+      <Link
+        to="/pipeline"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <TrendingUp size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>Opportunity Pipeline</span>
+      </Link>
+
+      <Link
+        to="/tasks"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <CheckCircle2 size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>งาน & นัดหมาย</span>
+      </Link>
+
+      <Link
+        to="/calendar"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <Calendar size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>ปฏิทินกลาง</span>
+      </Link>
+
+      {hasAccess([2, 4, 5]) && (
+        <Link
+          to="/admin-calendar"
+          onClick={onNavigate}
+          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        >
+          <Calendar size={18} />
+          <span className={collapsed ? 'lg:hidden' : ''}>Admin Calendar</span>
+        </Link>
+      )}
+
+      {hasAccess([3, 4, 5]) && (
+        <Link
+          to="/ai-logger"
+          onClick={onNavigate}
+          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        >
+          <MessageSquareCode size={18} />
+          <span className={collapsed ? 'lg:hidden' : ''}>AI บันทึกด้วยการคุย</span>
+        </Link>
+      )}
+
+      {hasAccess([4, 5]) && (
+        <Link
+          to="/team-overview"
+          onClick={onNavigate}
+          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        >
+          <Users2 size={18} />
+          <span className={collapsed ? 'lg:hidden' : ''}>ภาพรวมทีม</span>
+        </Link>
+      )}
+
+      <Link
+        to="/reports"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <FileText size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>รายงานกิจกรรม</span>
+      </Link>
+
+      {hasAccess([4, 5]) && (
+        <>
+          <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">จัดการระบบ</div>
+          <Link
+            to="/products"
+            onClick={onNavigate}
+            className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          >
+            <Briefcase size={18} />
+            <span className={collapsed ? 'lg:hidden' : ''}>สินค้า & ราคา</span>
+          </Link>
+          <Link
+            to="/discount-settings"
+            onClick={onNavigate}
+            className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          >
+            <Sliders size={18} />
+            <span className={collapsed ? 'lg:hidden' : ''}>ตั้งค่าส่วนลด</span>
+          </Link>
+        </>
+      )}
+
+      {hasAccess([4, 5]) && (
+        <Link
+          to="/admin"
+          onClick={onNavigate}
+          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        >
+          <Settings size={18} />
+          <span className={collapsed ? 'lg:hidden' : ''}>จัดการ Users & Roles</span>
+        </Link>
+      )}
+
+      <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">ธุรกรรม & คำขอ</div>
+      <Link
+        to="/quotes"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <DollarSign size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>ใบเสนอราคา</span>
+        {quoteUnreadCount > 0 && <span className={`ml-auto min-w-5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold text-center ${collapsed ? 'lg:hidden' : ''}`}>{quoteUnreadCount}</span>}
+      </Link>
+      <Link
+        to="/requests"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <FolderHeart size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>ระบบคำขอ (Requests)</span>
+        {requestUnreadCount > 0 && <span className={`ml-auto min-w-5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold text-center ${collapsed ? 'lg:hidden' : ''}`}>{requestUnreadCount}</span>}
+      </Link>
+    </nav>
+  );
+
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#090d16] text-slate-100 overflow-x-hidden font-sans">
-      {/* SIDEBAR */}
-      <aside className="w-full lg:w-64 glass-panel border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col justify-between shrink-0 lg:h-screen sticky top-0 z-50">
+      {isMobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="ปิดเมนูด้านข้าง"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-x-0 top-16 bottom-0 z-[55] bg-black/60 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      <aside className="hidden lg:flex lg:flex-col glass-panel border-b lg:border-b-0 lg:border-r border-slate-800 shrink-0 lg:h-screen sticky top-0 z-50">
         <div>
-          {/* Logo / Header */}
-          <div className="p-4 lg:p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className={`p-4 lg:p-6 border-b border-slate-800 flex items-center justify-between ${isDesktopSidebarCollapsed ? 'lg:justify-center' : ''}`}>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25">
                 NG
               </div>
-              <div>
+              <div className={isDesktopSidebarCollapsed ? 'lg:hidden' : ''}>
                 <span className="font-semibold text-sm tracking-wider text-slate-200">NEXTGEN</span>
                 <span className="block text-[10px] text-slate-400 uppercase tracking-widest">Sale & Support</span>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded text-[9px] font-medium bg-slate-800 border border-slate-700 text-slate-400">v2.0</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDesktopSidebarCollapsed(prev => !prev)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+                title={isDesktopSidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}
+                aria-label={isDesktopSidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}
+              >
+                {isDesktopSidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+              <span className="inline-flex px-2 py-0.5 rounded text-[9px] font-medium bg-slate-800 border border-slate-700 text-slate-400">v2.0</span>
+            </div>
           </div>
-
-          {/* Sidebar Links */}
-          <nav className="p-3 lg:p-4 flex gap-2 overflow-x-auto lg:block lg:space-y-1.5 lg:overflow-y-auto lg:max-h-[calc(100vh-170px)]">
-            <Link 
-              to="/dashboard"
-              activeProps={{ className: 'bg-indigo-600/20 text-indigo-400 border-l-2 border-indigo-500' }}
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <LayoutDashboard size={18} />
-              <span>แผงควบคุม (Dashboard)</span>
-            </Link>
-
-            {/* Menu options based on role */}
-            <Link 
-              to="/leads" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <Users size={18} />
-              <span>Leads & โรงเรียน</span>
-            </Link>
-
-            <Link 
-              to="/pipeline" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <TrendingUp size={18} />
-              <span>Opportunity Pipeline</span>
-            </Link>
-
-            <Link 
-              to="/tasks" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <CheckCircle2 size={18} />
-              <span>งาน & นัดหมาย</span>
-            </Link>
-
-            <Link 
-              to="/calendar" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <Calendar size={18} />
-              <span>ปฏิทินกลาง</span>
-            </Link>
-
-            {hasAccess([2, 4, 5]) && (
-              <Link 
-                to="/admin-calendar" 
-                className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-              >
-                <Calendar size={18} />
-                <span>Admin Calendar</span>
-              </Link>
-            )}
-
-            {hasAccess([3, 4, 5]) && (
-              <Link 
-                to="/ai-logger" 
-                className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-              >
-                <MessageSquareCode size={18} />
-                <span>AI บันทึกด้วยการคุย</span>
-              </Link>
-            )}
-
-            {hasAccess([4, 5]) && (
-              <Link 
-                to="/team-overview" 
-                className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-              >
-                <Users2 size={18} />
-                <span>ภาพรวมทีม</span>
-              </Link>
-            )}
-
-            <Link 
-              to="/reports" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <FileText size={18} />
-              <span>รายงานกิจกรรม</span>
-            </Link>
-
-            {hasAccess([4, 5]) && (
-              <>
-                <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">จัดการระบบ</div>
-                <Link 
-                  to="/products" 
-                  className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-                >
-                  <Briefcase size={18} />
-                  <span>สินค้า & ราคา</span>
-                </Link>
-                <Link 
-                  to="/discount-settings" 
-                  className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-                >
-                  <Sliders size={18} />
-                  <span>ตั้งค่าส่วนลด</span>
-                </Link>
-              </>
-            )}
-
-            {hasAccess([4, 5]) && (
-                <Link 
-                  to="/admin" 
-                  className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-                >
-                  <Settings size={18} />
-                  <span>จัดการ Users & Roles</span>
-                </Link>
-            )}
-
-            <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">ธุรกรรม & คำขอ</div>
-            <Link 
-              to="/quotes" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <DollarSign size={18} />
-              <span>ใบเสนอราคา</span>
-              {quoteUnreadCount > 0 && <span className="ml-auto min-w-5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold text-center">{quoteUnreadCount}</span>}
-            </Link>
-            <Link 
-              to="/requests" 
-              className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0"
-            >
-              <FolderHeart size={18} />
-              <span>ระบบคำขอ (Requests)</span>
-              {requestUnreadCount > 0 && <span className="ml-auto min-w-5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold text-center">{requestUnreadCount}</span>}
-            </Link>
-          </nav>
+          {renderSidebarNav(isDesktopSidebarCollapsed, () => undefined)}
         </div>
-
-        {/* User Swapper Footer */}
         <div className="hidden lg:block p-4 border-t border-slate-800 bg-slate-900/40">
           {user && (
             <div className="flex items-center justify-between gap-3">
-              <button 
+              <button
                 onClick={() => canUseQuickSwapper && setShowSwapper(true)}
                 className={`w-10 h-10 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center font-bold transition-all relative group ${canUseQuickSwapper ? 'hover:scale-105 hover:border-indigo-400 active:scale-95 cursor-pointer' : 'cursor-default'}`}
                 title={canUseQuickSwapper ? 'คลิกเพื่อสลับผู้ใช้ด่วน' : user.email}
@@ -367,8 +419,8 @@ function RootComponent() {
                 {user.name.charAt(0)}
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-[#090d16] rounded-full"></div>
               </button>
-              
-              <div className="flex-1 min-w-0">
+
+              <div className={`flex-1 min-w-0 ${isDesktopSidebarCollapsed ? 'lg:hidden' : ''}`}>
                 <span className="block text-xs font-semibold text-slate-200 truncate">{user.name}</span>
                 <span className="block text-[10px] text-slate-400 truncate">{user.email}</span>
                 <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] border font-medium mt-1 ${getRoleColor(user.rank)}`}>
@@ -376,7 +428,7 @@ function RootComponent() {
                 </span>
               </div>
 
-              <button 
+              <button
                 onClick={logout}
                 className="text-slate-500 hover:text-red-400 p-1 rounded-lg transition-all"
                 title="ออกจากระบบ"
@@ -388,11 +440,44 @@ function RootComponent() {
         </div>
       </aside>
 
-      {/* MAIN CONTAINER */}
+      {isMobileSidebarOpen && (
+        <div className="lg:hidden fixed inset-x-0 top-16 z-[60] max-h-[calc(100dvh-4rem)] overflow-y-auto glass-panel border-t border-slate-800">
+          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25">
+                NG
+              </div>
+              <div>
+                <span className="font-semibold text-sm tracking-wider text-slate-200">NEXTGEN</span>
+                <span className="block text-[10px] text-slate-400 uppercase tracking-widest">Sale & Support</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+              title="ปิดเมนู"
+              aria-label="ปิดเมนู"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {renderSidebarNav(false, () => setIsMobileSidebarOpen(false))}
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        {/* HEADER / NAVBAR */}
         <header className="h-auto min-h-16 border-b border-slate-800 flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-3 bg-slate-900/30 sticky top-0 backdrop-blur-md z-40">
           <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(prev => !prev)}
+              className="inline-flex lg:hidden items-center justify-center w-10 h-10 rounded-lg border border-slate-700 text-slate-300 hover:text-slate-100 hover:bg-slate-800/60 transition-all"
+              aria-label="เปิดหรือปิดเมนูด้านข้าง"
+              title="เปิดหรือปิดเมนูด้านข้าง"
+            >
+              {isMobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
             <h1 className="font-display font-medium text-base sm:text-lg text-slate-200">
               {location.pathname === '/dashboard' ? 'แดชบอร์ดภาพรวม' : 'ยินดีต้อนรับสู่ระบบบริหารงานขาย'}
             </h1>

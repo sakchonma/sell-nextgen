@@ -1758,6 +1758,7 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     search = '',
     zone = 'All',
     status = 'All',
+    stage = 'All',
     assignedTo = 'All',
     minScore,
     maxScore,
@@ -1780,6 +1781,7 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     }
     if (zone !== 'All' && lead.zone !== zone) return false;
     if (status !== 'All' && lead.status !== status) return false;
+    if (stage !== 'All' && lead.stage !== stage) return false;
     if (assignedTo !== 'All' && lead.assignedTo !== assignedTo) return false;
     if (minScore !== undefined && lead.score < Number(minScore)) return false;
     if (maxScore !== undefined && lead.score > Number(maxScore)) return false;

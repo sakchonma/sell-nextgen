@@ -31,6 +31,7 @@ function LeadsIndexComponent() {
   const [search, setSearch] = useState('');
   const [selectedZone, setSelectedZone] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
+  const [selectedStageFilter, setSelectedStageFilter] = useState('All');
   const [selectedOwner, setSelectedOwner] = useState('All');
   const [minScore, setMinScore] = useState('');
   const [maxScore, setMaxScore] = useState('');
@@ -59,12 +60,13 @@ function LeadsIndexComponent() {
       search,
       zone: selectedZone,
       status: selectedStatus,
+      stage: selectedStageFilter,
       assignedTo: selectedOwner
     });
     if (minScore) params.set('minScore', minScore);
     if (maxScore) params.set('maxScore', maxScore);
     return `/api/leads?${params.toString()}`;
-  }, [maxScore, minScore, search, selectedOwner, selectedStatus, selectedZone]);
+  }, [maxScore, minScore, search, selectedOwner, selectedStageFilter, selectedStatus, selectedZone]);
 
   const fetchLeads = useCallback((mode: 'reset' | 'append' = 'reset') => {
     if (loadingLeadsRef.current && mode === 'append') return;
@@ -284,12 +286,26 @@ function LeadsIndexComponent() {
           <select 
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-300 focus:outline-none"
+            className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200 focus:outline-none"
           >
             <option value="All">ทุกสถานะ</option>
             <option value="Cold">Cold</option>
             <option value="Warm">Warm</option>
             <option value="Hot">Hot</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 flex items-center gap-1"><Filter size={12} /> Stage:</span>
+          <select
+            value={selectedStageFilter}
+            onChange={(e) => setSelectedStageFilter(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200 focus:outline-none"
+          >
+            <option value="All">ทุก Stage</option>
+            {LEAD_STAGE_OPTIONS.map(stage => (
+              <option key={stage} value={stage}>{stage}</option>
+            ))}
           </select>
         </div>
 
@@ -328,80 +344,75 @@ function LeadsIndexComponent() {
           <div
             key={lead._id}
             ref={index === leads.length - 1 ? lastLeadRef : undefined}
-            className="p-5 rounded-2xl glass-card text-left flex flex-col justify-between h-48 border border-slate-800 bg-[#121826]/30"
+            className="p-5 rounded-2xl glass-card text-left flex flex-col justify-between h-56 border border-slate-800 bg-[#121826]/30"
           >
             <div>
-              <div className="flex justify-between items-start gap-3">
-                <Link 
+              <div className="flex items-start justify-between gap-3">
+                <Link
                   to="/leads/$leadId"
                   params={{ leadId: lead._id }}
-                  className="font-bold text-slate-200 hover:text-indigo-400 font-display text-sm tracking-wide line-clamp-1 hover:underline transition-all"
+                  className="font-bold text-slate-100 hover:text-indigo-300 font-display text-base tracking-wide line-clamp-1 hover:underline transition-all"
                 >
                   {lead.schoolName}
                 </Link>
-                <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                  <div className="relative">
-                    <select
-                      value={['Cold', 'Warm', 'Hot'].includes(lead.status) ? lead.status : 'Cold'}
-                      onChange={(e) => handleStatusChange(lead, e.target.value)}
-                      disabled={updatingLeadId === lead._id}
-                      className={`appearance-none pr-6 pl-2 py-1 rounded text-[8.5px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStatusStyle(lead.status)}`}
-                      title="เปลี่ยนสถานะลีด"
-                    >
-                      <option value="Cold">Cold</option>
-                      <option value="Warm">Warm</option>
-                      <option value="Hot">Hot</option>
-                    </select>
-                    {updatingLeadId === lead._id ? (
-                      <Loader2 size={10} className="absolute right-1.5 top-1.5 animate-spin text-slate-400" />
-                    ) : (
-                      <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <select
-                      value={LEAD_STAGE_OPTIONS.includes(lead.stage) ? lead.stage : 'New Lead'}
-                      onChange={(e) => handleStageChange(lead, e.target.value)}
-                      disabled={updatingLeadId === lead._id}
-                      className={`appearance-none max-w-32 pr-6 pl-2 py-1 rounded text-[8.5px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'New Lead')}`}
-                      title="เปลี่ยน Stage"
-                    >
-                      {LEAD_STAGE_OPTIONS.map(stage => <option key={stage} value={stage}>{stage}</option>)}
-                    </select>
+              </div>
+              <div className="mt-2 flex shrink-0 flex-wrap gap-1.5">
+                <div className="relative">
+                  <select
+                    value={['Cold', 'Warm', 'Hot'].includes(lead.status) ? lead.status : 'Cold'}
+                    onChange={(e) => handleStatusChange(lead, e.target.value)}
+                    disabled={updatingLeadId === lead._id}
+                    className={`appearance-none pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStatusStyle(lead.status)}`}
+                    title="เปลี่ยนสถานะลีด"
+                  >
+                    <option value="Cold">Cold</option>
+                    <option value="Warm">Warm</option>
+                    <option value="Hot">Hot</option>
+                  </select>
+                  {updatingLeadId === lead._id ? (
+                    <Loader2 size={10} className="absolute right-1.5 top-1.5 animate-spin text-slate-400" />
+                  ) : (
                     <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
-                  </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <select
+                    value={LEAD_STAGE_OPTIONS.includes(lead.stage) ? lead.stage : 'New Lead'}
+                    onChange={(e) => handleStageChange(lead, e.target.value)}
+                    disabled={updatingLeadId === lead._id}
+                    className={`appearance-none max-w-32 pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'New Lead')}`}
+                    title="เปลี่ยน Stage"
+                  >
+                    {LEAD_STAGE_OPTIONS.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                  </select>
+                  <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 mt-1">
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 mt-1">
                 <MapPin size={10} /> {lead.address} ({lead.zone})
               </span>
 
               {/* Contacts count */}
-              <div className="text-[11px] text-slate-400 mt-4 flex items-center gap-1">
+              <div className="text-xs text-slate-300 mt-4 flex items-center gap-1">
                 <UserCheck size={12} className="text-slate-500" />
                 <span>{ownerName(lead.assignedTo)} · ผู้ติดต่อ {lead.contacts?.length || 0} คน</span>
               </div>
-              {(lead.source || lead.campaign) && (
-                <div className="text-[10px] text-slate-500 mt-2">
-                  Source: {lead.source || '-'} {lead.campaign ? `· ${lead.campaign}` : ''}
-                </div>
-              )}
             </div>
 
             {/* Score slide / representative */}
             <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest">Score:</span>
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Score:</span>
                 <div className="w-16 bg-slate-900 h-1.5 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-indigo-500 rounded-full"
                     style={{ width: `${lead.score}%` }}
                   ></div>
                 </div>
-                <span className="text-[10px] font-semibold text-slate-300">{lead.score}</span>
+                <span className="text-xs font-semibold text-slate-200">{lead.score}</span>
               </div>
 
-              <span className="text-[10.5px] text-indigo-400 font-semibold hover:underline">
+              <span className="text-xs text-indigo-300 font-semibold hover:underline">
                 <Link to="/leads/$leadId" params={{ leadId: lead._id }} className="flex items-center gap-0.5">
                   จัดการลีด <TrendingUp size={10} />
                 </Link>
