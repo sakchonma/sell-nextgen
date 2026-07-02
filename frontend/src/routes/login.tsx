@@ -36,7 +36,7 @@ function LoginComponent() {
     <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4">
       <div className="w-full max-w-md p-8 rounded-2xl border border-slate-800 bg-[#121826]/75 shadow-2xl backdrop-blur-md relative overflow-hidden">
         <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
-        
+
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-3">
             <ShieldCheck className="text-white" size={24} />
@@ -54,7 +54,7 @@ function LoginComponent() {
 
           <div>
             <label className="block text-xs text-slate-400 font-semibold mb-1">อีเมลผู้ใช้</label>
-            <input 
+            <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -66,7 +66,7 @@ function LoginComponent() {
 
           <div>
             <label className="block text-xs text-slate-400 font-semibold mb-1">รหัสผ่าน</label>
-            <input 
+            <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -76,7 +76,7 @@ function LoginComponent() {
             />
           </div>
 
-          <button 
+          <button
             type="submit"
             className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white shadow-lg shadow-indigo-600/35 transition-all cursor-pointer mt-2"
           >
@@ -84,7 +84,7 @@ function LoginComponent() {
           </button>
         </form>
 
-        <div className="mt-8 border-t border-slate-800/80 pt-6">
+        {/* <div className="mt-8 border-t border-slate-800/80 pt-6">
           <span className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 text-center">
             บัญชีแนะนำในการทดสอบสิทธิ์
           </span>
@@ -109,7 +109,7 @@ function LoginComponent() {
               </button>
             ))}
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );
