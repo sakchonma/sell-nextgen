@@ -67,6 +67,7 @@ function RootComponent() {
           { _id: 'u6', name: 'กฤษฎา สุขใส', email: 'sales3@nextgen.co.th', rank: 3, zone: 'ภาคใต้', roleId: 'r_sales' },
           { _id: 'u7', name: 'อรอุมา พรมดี', email: 'sales4@nextgen.co.th', rank: 3, zone: 'ภาคตะวันตก', roleId: 'r_sales' },
           { _id: 'u8', name: 'ปิยะ ศรีทอง', email: 'sales5@nextgen.co.th', rank: 3, zone: 'ภาคอีสาน', roleId: 'r_sales' },
+          { _id: 'u15', name: 'ศุภกิจ ใจกลาง', email: 'sales6@nextgen.co.th', rank: 3, zone: 'ภาคกลาง', roleId: 'r_sales' },
           { _id: 'u9', name: 'วรากร ดีงาม', email: 'central@nextgen.co.th', rank: 2, roleId: 'r_support' }
         ]);
       });

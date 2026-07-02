@@ -22,34 +22,199 @@
 :root {
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Outfit', system-ui, sans-serif;
+  --surface-page: #f1eadb;
+  --surface-panel: rgba(255, 249, 237, 0.96);
+  --surface-card: #fffdf8;
+  --surface-soft: #eadfca;
+  --surface-muted: #dfd0b8;
+  --border-soft: #d2bea0;
+  --text-strong: #1f2933;
+  --text-body: #47515d;
+  --text-muted: #73706a;
+  --text-faint: #a49a8b;
+  --app-modal-top: 4.75rem;
+}
+
+html {
+  font-size: 17px;
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background-color: #090d16;
-  color: #f8fafc;
+  background-color: var(--surface-page);
+  color: var(--text-body);
   min-height: 100vh;
 }
 
 /* Glassmorphism card utilities */
 .glass-panel {
-  background: rgba(18, 24, 38, 0.7);
+  background: var(--surface-panel);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(210, 190, 160, 0.95);
+  box-shadow: 0 18px 60px rgba(76, 61, 41, 0.11);
 }
 
 .glass-card {
-  background: linear-gradient(135deg, rgba(20, 27, 45, 0.8) 0%, rgba(12, 17, 30, 0.8) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  background: var(--surface-card);
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 12px 34px rgba(76, 61, 41, 0.12);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glass-card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 12px 40px 0 rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 14px 36px rgba(99, 102, 241, 0.12);
   transform: translateY(-2px);
+}
+
+/* Light theme bridge for legacy dark Tailwind utility classes. */
+[class*="bg-[#090d16]"],
+[class*="bg-[#121826]"],
+[class*="bg-slate-950"],
+[class*="bg-slate-900"],
+[class*="bg-slate-800"] {
+  background-color: var(--surface-card) !important;
+}
+
+[class*="bg-[#090d16]/"],
+[class*="bg-[#121826]/"],
+[class*="bg-slate-950/"],
+[class*="bg-slate-900/"],
+[class*="bg-slate-800/"] {
+  background-color: rgba(255, 249, 237, 0.92) !important;
+}
+
+[class*="hover:bg-slate-800"]:hover,
+[class*="hover:bg-slate-700"]:hover {
+  background-color: var(--surface-soft) !important;
+}
+
+[class*="border-slate-900"],
+[class*="border-slate-800"],
+[class*="border-slate-700"] {
+  border-color: var(--border-soft) !important;
+}
+
+[class*="text-slate-100"],
+[class*="text-slate-200"] {
+  color: var(--text-strong) !important;
+}
+
+[class*="text-slate-300"] {
+  color: var(--text-body) !important;
+}
+
+[class*="text-slate-400"],
+[class*="text-slate-500"],
+[class*="text-slate-600"] {
+  color: var(--text-muted) !important;
+}
+
+[class*="hover:text-slate-200"]:hover,
+[class*="hover:text-slate-300"]:hover {
+  color: var(--text-strong) !important;
+}
+
+input,
+select,
+textarea {
+  background-color: #fffdf8 !important;
+  border-color: var(--border-soft) !important;
+  color: var(--text-strong) !important;
+}
+
+select[class*="bg-rose-500"] {
+  background-color: rgba(244, 63, 94, 0.12) !important;
+  border-color: rgba(244, 63, 94, 0.34) !important;
+  color: #be123c !important;
+}
+
+select[class*="bg-amber-500"] {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.38) !important;
+  color: #b45309 !important;
+}
+
+select[class*="bg-blue-500"] {
+  background-color: rgba(59, 130, 246, 0.13) !important;
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  color: #1d4ed8 !important;
+}
+
+select[class*="bg-sky-500"] {
+  background-color: rgba(14, 165, 233, 0.13) !important;
+  border-color: rgba(14, 165, 233, 0.35) !important;
+  color: #0369a1 !important;
+}
+
+select[class*="bg-indigo-500"] {
+  background-color: rgba(99, 102, 241, 0.13) !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+  color: #4338ca !important;
+}
+
+select[class*="bg-emerald-500"] {
+  background-color: rgba(16, 185, 129, 0.13) !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+  color: #047857 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+table,
+thead,
+tbody,
+tr {
+  color: var(--text-body);
+}
+
+[class*="text-[8px]"] {
+  font-size: 0.62rem !important;
+}
+
+[class*="text-[9px]"],
+[class*="text-[9.5px]"] {
+  font-size: 0.68rem !important;
+}
+
+[class*="text-[10px]"] {
+  font-size: 0.74rem !important;
+}
+
+[class*="text-[11px]"] {
+  font-size: 0.8rem !important;
+}
+
+.text-xs {
+  font-size: 0.82rem !important;
+  line-height: 1.35rem !important;
+}
+
+.text-sm {
+  font-size: 0.95rem !important;
+  line-height: 1.45rem !important;
+}
+
+/* Keep every full-screen modal below the sticky top bar. */
+.fixed.inset-0[class*="z-"] {
+  top: var(--app-modal-top) !important;
+  height: calc(100dvh - var(--app-modal-top)) !important;
+  min-height: 0 !important;
+  overflow-y: auto;
+}
+
+.admin-calendar-modal-backdrop {
+  top: 0 !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  align-items: flex-start !important;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding-top: calc(var(--app-modal-top) + 1rem) !important;
 }
 
 button,
@@ -102,14 +267,14 @@ textarea:focus-visible {
 }
 
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: var(--surface-page);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1f293d;
+  background: #cbd5e1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2d3d5a;
+  background: #94a3b8;
 }

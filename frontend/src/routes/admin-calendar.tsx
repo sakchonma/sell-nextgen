@@ -520,7 +520,7 @@ function AdminCalendarComponent() {
       </div>
 
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div className="admin-calendar-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <form onSubmit={saveEvent} className="w-full max-w-lg rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -596,35 +596,35 @@ function AdminCalendarComponent() {
       )}
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <form onSubmit={createEvent} className="w-full max-w-lg rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
+        <div className="admin-calendar-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-amber-950/25 backdrop-blur-sm p-4">
+          <form onSubmit={createEvent} className="w-full max-w-lg rounded-xl border border-amber-200 bg-[#fffaf0] p-5 shadow-xl shadow-amber-950/10 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className="inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase border-emerald-500/20 bg-emerald-500/10 text-emerald-300">Admin</span>
-                <h3 className="mt-2 text-sm font-bold text-slate-100">สร้าง Admin Event</h3>
+                <h3 className="mt-2 text-sm font-bold text-slate-800">สร้าง Admin Event</h3>
               </div>
-              <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200" title="ปิด">
+              <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg text-slate-500 hover:bg-amber-100 hover:text-slate-800" title="ปิด">
                 <X size={16} />
               </button>
             </div>
-            <input value={createForm.title} onChange={e => setCreateForm({ ...createForm, title: e.target.value })} placeholder="ชื่อแผนงาน" className="w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500" required />
-            <textarea value={createForm.description} onChange={e => setCreateForm({ ...createForm, description: e.target.value })} rows={3} placeholder="รายละเอียด" className="w-full rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500" />
+            <input value={createForm.title} onChange={e => setCreateForm({ ...createForm, title: e.target.value })} placeholder="ชื่อแผนงาน" className="w-full rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none focus:border-indigo-400" required />
+            <textarea value={createForm.description} onChange={e => setCreateForm({ ...createForm, description: e.target.value })} rows={3} placeholder="รายละเอียด" className="w-full rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none focus:border-indigo-400" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <select value={createForm.department} onChange={e => setCreateForm({ ...createForm, department: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none">
+              <select value={createForm.department} onChange={e => setCreateForm({ ...createForm, department: e.target.value })} className="rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none">
                 {REQUEST_DEPARTMENTS.map(dept => <option key={dept} value={dept}>{departmentLabel(dept)}</option>)}
               </select>
-              <select value={createForm.ownerId} onChange={e => setCreateForm({ ...createForm, ownerId: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none">
+              <select value={createForm.ownerId} onChange={e => setCreateForm({ ...createForm, ownerId: e.target.value })} className="rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none">
                 <option value="">ตัวเอง</option>
                 {owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <input type="date" value={createForm.date} onChange={e => setCreateForm({ ...createForm, date: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none" />
-              <input type="time" value={createForm.start} onChange={e => setCreateForm({ ...createForm, start: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none" />
-              <input type="time" value={createForm.end} onChange={e => setCreateForm({ ...createForm, end: e.target.value })} className="rounded-lg border border-slate-800 bg-[#090d16] px-3 py-2 text-xs text-slate-200 outline-none" />
+              <input type="date" value={createForm.date} onChange={e => setCreateForm({ ...createForm, date: e.target.value })} className="rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none" />
+              <input type="time" value={createForm.start} onChange={e => setCreateForm({ ...createForm, start: e.target.value })} className="rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none" />
+              <input type="time" value={createForm.end} onChange={e => setCreateForm({ ...createForm, end: e.target.value })} className="rounded-lg border border-amber-200 bg-[#fffdf8] px-3 py-2 text-xs text-slate-800 outline-none" />
             </div>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">ยกเลิก</button>
+              <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-lg border border-amber-200 text-xs font-semibold text-slate-600 hover:bg-amber-100 hover:text-slate-800">ยกเลิก</button>
               <button disabled={saving} type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
                 <Save size={14} /> สร้าง
               </button>

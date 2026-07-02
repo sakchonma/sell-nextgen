@@ -14,9 +14,12 @@ import {
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 
+const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
+const LEAD_STAGE_OPTIONS = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'];
+
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
-  path: '/leads/index',
+  path: '/leads/',
   component: LeadsIndexComponent,
 });
 
@@ -34,6 +37,7 @@ function LeadsIndexComponent() {
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadAddress, setNewLeadAddress] = useState('');
   const [newLeadZone, setNewLeadZone] = useState('ภาคเหนือ');
+  const [newLeadStage, setNewLeadStage] = useState('New Lead');
   const [newLeadSource, setNewLeadSource] = useState('Outbound');
   const [newLeadCampaign, setNewLeadCampaign] = useState('');
   const [leadError, setLeadError] = useState('');
@@ -60,6 +64,7 @@ function LeadsIndexComponent() {
       address: newLeadAddress,
       zone: newLeadZone,
       status: 'Cold',
+      stage: newLeadStage,
       score: 10,
       source: newLeadSource,
       campaign: newLeadCampaign || undefined
@@ -68,6 +73,7 @@ function LeadsIndexComponent() {
         setShowAddModal(false);
         setNewLeadName('');
         setNewLeadAddress('');
+        setNewLeadStage('New Lead');
         setNewLeadCampaign('');
         fetchLeads();
       })
@@ -79,14 +85,15 @@ function LeadsIndexComponent() {
     setLeadError('');
     setLeadMessage('');
     try {
-      const text = await file.text();
+      const isExcel = file.name.toLowerCase().endsWith('.xlsx');
+      const body = isExcel ? await file.arrayBuffer() : await file.text();
       const res = await fetch('/api/leads/import.csv', {
         method: 'POST',
         headers: {
-          'Content-Type': 'text/csv',
+          'Content-Type': isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv',
           Authorization: `Bearer ${localStorage.getItem('token') || ''}`
         },
-        body: text
+        body
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Import CSV ไม่สำเร็จ');
@@ -114,11 +121,38 @@ function LeadsIndexComponent() {
       .finally(() => setUpdatingLeadId(''));
   };
 
+  const handleStageChange = (lead: any, stage: string) => {
+    if ((lead.stage || 'New Lead') === stage) return;
+    const previousStage = lead.stage || 'New Lead';
+    setUpdatingLeadId(lead._id);
+    setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage } : item));
+
+    apiJson(`/api/leads/${lead._id}`, { stage }, { method: 'PUT' })
+      .then(updatedLead => {
+        setLeads(prev => prev.map(item => item._id === lead._id ? updatedLead : item));
+      })
+      .catch(err => {
+        console.error('Failed to update lead stage:', err);
+        setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage: previousStage } : item));
+      })
+      .finally(() => setUpdatingLeadId(''));
+  };
+
   const getStatusStyle = (status: string) => {
     if (status === 'Hot') return 'bg-rose-500/10 text-rose-400 border-rose-500/25';
     if (status === 'Warm') return 'bg-amber-500/10 text-amber-400 border-amber-500/25';
     if (status === 'Cold') return 'bg-blue-500/10 text-blue-400 border-blue-500/25';
     return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
+  };
+
+  const getStageStyle = (stage: string) => {
+    if (stage === 'Closed Won') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
+    if (stage === 'Closed Lost') return 'bg-rose-500/10 text-rose-400 border-rose-500/25';
+    if (stage === 'Proposal Sent' || stage === 'Pilot/Trial') return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/25';
+    if (stage === 'Demo Scheduled') return 'bg-amber-500/10 text-amber-400 border-amber-500/25';
+    if (stage === 'Interested') return 'bg-sky-500/10 text-sky-400 border-sky-500/25';
+    if (stage === 'Contacted') return 'bg-blue-500/10 text-blue-400 border-blue-500/25';
+    return 'bg-slate-800 text-slate-400 border-slate-700';
   };
 
   const filteredLeads = Array.isArray(leads)
@@ -148,8 +182,8 @@ function LeadsIndexComponent() {
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <label className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-200 border border-slate-700 cursor-pointer">
-            Import CSV
-            <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => handleImportCsv(e.target.files?.[0])} />
+            Import CSV/XLSX
+            <input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={e => handleImportCsv(e.target.files?.[0])} />
           </label>
           <a
             href="/api/leads/export.csv"
@@ -191,11 +225,7 @@ function LeadsIndexComponent() {
             className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-300 focus:outline-none"
           >
             <option value="All">ทุกภาค</option>
-            <option value="ภาคเหนือ">ภาคเหนือ</option>
-            <option value="ภาคตะวันออก">ภาคตะวันออก</option>
-            <option value="ภาคใต้">ภาคใต้</option>
-            <option value="ภาคตะวันตก">ภาคตะวันตก</option>
-            <option value="ภาคอีสาน">ภาคอีสาน</option>
+            {ZONE_OPTIONS.map(zone => <option key={zone} value={zone}>{zone}</option>)}
           </select>
         </div>
 
@@ -248,23 +278,37 @@ function LeadsIndexComponent() {
                 >
                   {lead.schoolName}
                 </Link>
-                <div className="relative shrink-0">
-                  <select
-                    value={['Cold', 'Warm', 'Hot'].includes(lead.status) ? lead.status : 'Cold'}
-                    onChange={(e) => handleStatusChange(lead, e.target.value)}
-                    disabled={updatingLeadId === lead._id}
-                    className={`appearance-none pr-6 pl-2 py-1 rounded text-[8.5px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStatusStyle(lead.status)}`}
-                    title="เปลี่ยนสถานะลีด"
-                  >
-                    <option value="Cold">Cold</option>
-                    <option value="Warm">Warm</option>
-                    <option value="Hot">Hot</option>
-                  </select>
-                  {updatingLeadId === lead._id ? (
-                    <Loader2 size={10} className="absolute right-1.5 top-1.5 animate-spin text-slate-400" />
-                  ) : (
+                <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                  <div className="relative">
+                    <select
+                      value={['Cold', 'Warm', 'Hot'].includes(lead.status) ? lead.status : 'Cold'}
+                      onChange={(e) => handleStatusChange(lead, e.target.value)}
+                      disabled={updatingLeadId === lead._id}
+                      className={`appearance-none pr-6 pl-2 py-1 rounded text-[8.5px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStatusStyle(lead.status)}`}
+                      title="เปลี่ยนสถานะลีด"
+                    >
+                      <option value="Cold">Cold</option>
+                      <option value="Warm">Warm</option>
+                      <option value="Hot">Hot</option>
+                    </select>
+                    {updatingLeadId === lead._id ? (
+                      <Loader2 size={10} className="absolute right-1.5 top-1.5 animate-spin text-slate-400" />
+                    ) : (
+                      <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={LEAD_STAGE_OPTIONS.includes(lead.stage) ? lead.stage : 'New Lead'}
+                      onChange={(e) => handleStageChange(lead, e.target.value)}
+                      disabled={updatingLeadId === lead._id}
+                      className={`appearance-none max-w-32 pr-6 pl-2 py-1 rounded text-[8.5px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'New Lead')}`}
+                      title="เปลี่ยน Stage"
+                    >
+                      {LEAD_STAGE_OPTIONS.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                    </select>
                     <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
-                  )}
+                  </div>
                 </div>
               </div>
               <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 mt-1">
@@ -349,11 +393,18 @@ function LeadsIndexComponent() {
                 onChange={(e) => setNewLeadZone(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
               >
-                <option value="ภาคเหนือ">ภาคเหนือ</option>
-                <option value="ภาคตะวันออก">ภาคตะวันออก</option>
-                <option value="ภาคใต้">ภาคใต้</option>
-                <option value="ภาคตะวันตก">ภาคตะวันตก</option>
-                <option value="ภาคอีสาน">ภาคอีสาน</option>
+                {ZONE_OPTIONS.map(zone => <option key={zone} value={zone}>{zone}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 font-semibold mb-1">Stage</label>
+              <select
+                value={newLeadStage}
+                onChange={(e) => setNewLeadStage(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              >
+                {LEAD_STAGE_OPTIONS.map(stage => <option key={stage} value={stage}>{stage}</option>)}
               </select>
             </div>
 

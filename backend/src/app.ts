@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
 import { z } from 'zod';
 import { getDbStatus } from './config/mongodb.js';
 import { config } from './config/index.js';
@@ -561,12 +562,29 @@ const leadAttachmentSchema = z.object({
 }).strict();
 
 const leadStatusSchema = z.enum(['Cold', 'Warm', 'Hot', 'Customer']);
+const leadStageSchema = z.enum(['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost']);
+const optionalNumberSchema = z.coerce.number().min(0).optional();
+const optionalDateTextSchema = z.string().trim().optional().refine(value => !value || !Number.isNaN(Date.parse(value)), {
+  message: 'ต้องเป็นวันที่หรือเวลาในรูปแบบที่ถูกต้อง'
+});
 const createLeadBodySchema = z.object({
   schoolName: nonEmptyTextSchema,
   address: optionalTextSchema,
   zone: optionalTextSchema,
   status: leadStatusSchema.default('Cold'),
+  stage: leadStageSchema.default('New Lead'),
   score: z.coerce.number().min(0).max(100).default(10),
+  gradeLevels: optionalTextSchema,
+  educationAuthority: optionalTextSchema,
+  district: optionalTextSchema,
+  province: optionalTextSchema,
+  studentCount: optionalNumberSchema,
+  upperElementaryStudentCount: optionalNumberSchema,
+  lastContactedAt: optionalDateTextSchema,
+  nextCallAt: optionalDateTextSchema,
+  documentStatus: optionalTextSchema,
+  remarks: optionalTextSchema,
+  legacySaleName: optionalTextSchema,
   source: optionalTextSchema,
   campaign: optionalTextSchema,
   assignedTo: idSchema.optional(),
@@ -576,7 +594,22 @@ const createLeadBodySchema = z.object({
 
 const updateLeadBodySchema = z.object({
   status: leadStatusSchema.optional(),
+  stage: leadStageSchema.optional(),
   score: z.coerce.number().min(0).max(100).optional(),
+  schoolName: nonEmptyTextSchema.optional(),
+  address: optionalTextSchema,
+  zone: optionalTextSchema,
+  gradeLevels: optionalTextSchema,
+  educationAuthority: optionalTextSchema,
+  district: optionalTextSchema,
+  province: optionalTextSchema,
+  studentCount: optionalNumberSchema,
+  upperElementaryStudentCount: optionalNumberSchema,
+  lastContactedAt: optionalDateTextSchema,
+  nextCallAt: optionalDateTextSchema,
+  documentStatus: optionalTextSchema,
+  remarks: optionalTextSchema,
+  legacySaleName: optionalTextSchema,
   source: optionalTextSchema,
   campaign: optionalTextSchema,
   assignedTo: idSchema.optional(),
@@ -899,6 +932,13 @@ function findLeadDuplicates(leads: any[], candidate: any, excludeId?: string) {
       });
     })
     .map(lead => ({ _id: lead._id, schoolName: lead.schoolName, zone: lead.zone, status: lead.status }));
+}
+
+function hydrateLeadForResponse(lead: any) {
+  return {
+    ...lead,
+    stage: lead.stage || 'New Lead'
+  };
 }
 
 function buildAILogParsedPayload(body: any, type: ConversationalTaskType, urgency: UrgencyLevel) {
@@ -1745,11 +1785,11 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
   if (currentUser.rank === 3) {
     const userZone = currentUser.zone || '';
     const filteredLeads = leadsArray.filter(l => l.assignedTo === currentUser._id || l.zone === userZone);
-    res.json(filteredLeads);
+    res.json(filteredLeads.map(hydrateLeadForResponse));
     return;
   }
 
-  res.json(leadsArray);
+  res.json(leadsArray.map(hydrateLeadForResponse));
 });
 
 app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, res) => {
@@ -1763,13 +1803,25 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
   const allLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanSeeLead(currentUser, lead));
   const escapeCsv = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const rows = [
-    ['schoolName', 'address', 'zone', 'status', 'score', 'source', 'campaign', 'assignedTo', 'contacts'].join(','),
+    ['schoolName', 'address', 'zone', 'status', 'stage', 'score', 'gradeLevels', 'educationAuthority', 'district', 'province', 'studentCount', 'upperElementaryStudentCount', 'lastContactedAt', 'nextCallAt', 'documentStatus', 'remarks', 'legacySaleName', 'source', 'campaign', 'assignedTo', 'contacts'].join(','),
     ...allLeads.map(lead => [
       lead.schoolName,
       lead.address,
       lead.zone,
       lead.status,
+      lead.stage || 'New Lead',
       lead.score,
+      lead.gradeLevels,
+      lead.educationAuthority,
+      lead.district,
+      lead.province,
+      lead.studentCount,
+      lead.upperElementaryStudentCount,
+      lead.lastContactedAt,
+      lead.nextCallAt,
+      lead.documentStatus,
+      lead.remarks,
+      lead.legacySaleName,
       lead.source,
       lead.campaign,
       userMap.get(lead.assignedTo)?.name || lead.assignedTo,
@@ -1804,72 +1856,340 @@ function parseCsvLine(line: string) {
   return cells;
 }
 
-app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.text({ type: ['text/csv', 'text/plain', 'application/csv'], limit: '2mb' }), async (req, res) => {
+function decodeXml(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function colToIndex(col: string) {
+  return col.split('').reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
+}
+
+function readZipEntry(buffer: Buffer, entryName: string) {
+  const eocdSignature = 0x06054b50;
+  let eocdOffset = -1;
+  for (let offset = buffer.length - 22; offset >= Math.max(0, buffer.length - 66000); offset -= 1) {
+    if (buffer.readUInt32LE(offset) === eocdSignature) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (eocdOffset === -1) throw new Error('อ่านโครงสร้างไฟล์ Excel ไม่ได้');
+
+  const centralDirOffset = buffer.readUInt32LE(eocdOffset + 16);
+  const centralDirSize = buffer.readUInt32LE(eocdOffset + 12);
+  let offset = centralDirOffset;
+  const end = centralDirOffset + centralDirSize;
+
+  while (offset < end) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const fileName = buffer.subarray(offset + 46, offset + 46 + fileNameLength).toString('utf8');
+
+    if (fileName === entryName) {
+      const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+      const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+      const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+      const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
+      if (method === 0) return compressed.toString('utf8');
+      if (method === 8) return zlib.inflateRawSync(compressed).toString('utf8');
+      throw new Error(`ไม่รองรับ compression method ${method} ในไฟล์ Excel`);
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+
+  throw new Error(`ไม่พบ ${entryName} ในไฟล์ Excel`);
+}
+
+function parseSharedStrings(xml: string) {
+  const strings: string[] = [];
+  const siMatches = xml.matchAll(/<si\b[\s\S]*?<\/si>/g);
+  for (const match of siMatches) {
+    const text = [...match[0].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)]
+      .map(item => decodeXml(item[1]))
+      .join('');
+    strings.push(text);
+  }
+  return strings;
+}
+
+function parseWorksheetRows(xml: string, sharedStrings: string[]) {
+  const rows: Record<string, string>[] = [];
+  const rowMatches = xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g);
+  for (const rowMatch of rowMatches) {
+    const values: Record<string, string> = {};
+    const cellMatches = rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g);
+    for (const cellMatch of cellMatches) {
+      const attrs = cellMatch[1];
+      const body = cellMatch[2];
+      const ref = attrs.match(/\br="([A-Z]+)\d+"/)?.[1];
+      if (!ref) continue;
+      const type = attrs.match(/\bt="([^"]+)"/)?.[1];
+      let value = '';
+      if (type === 'inlineStr') {
+        value = [...body.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(item => decodeXml(item[1])).join('');
+      } else {
+        const rawValue = body.match(/<v>([\s\S]*?)<\/v>/)?.[1] || '';
+        value = type === 's' && rawValue ? sharedStrings[Number(rawValue)] || '' : decodeXml(rawValue);
+      }
+      values[ref] = value.trim();
+    }
+    if (Object.values(values).some(Boolean)) rows.push(values);
+  }
+  return rows;
+}
+
+function parseXlsxRows(buffer: Buffer) {
+  const sharedStringsXml = readZipEntry(buffer, 'xl/sharedStrings.xml');
+  const sheetXml = readZipEntry(buffer, 'xl/worksheets/sheet1.xml');
+  const sharedStrings = parseSharedStrings(sharedStringsXml);
+  const rows = parseWorksheetRows(sheetXml, sharedStrings);
+  if (rows.length < 2) return [] as Record<string, string>[];
+  const headers = rows[0];
+  return rows.slice(1).map(row => {
+    const mapped: Record<string, string> = {};
+    Object.entries(row).forEach(([col, value]) => {
+      mapped[`__col_${col}`] = value;
+    });
+    Object.entries(headers).forEach(([col, header]) => {
+      if (header) mapped[header] = row[col] || '';
+    });
+    return mapped;
+  });
+}
+
+function excelSerialToDateText(value?: string) {
+  if (!value || value === '-') return '';
+  const serial = Number(value);
+  if (!Number.isFinite(serial) || serial < 30000) return value;
+  const date = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+  return date.toISOString().slice(0, 10);
+}
+
+function numberFromImportCell(value?: string) {
+  const cleaned = String(value || '').replace(/,/g, '').trim();
+  if (!cleaned || cleaned === '-') return undefined;
+  const numberValue = Number(cleaned);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function provinceToZone(province?: string) {
+  const normalized = String(province || '').replace(/\s/g, '');
+  if (!normalized) return 'ภาคกลาง';
+  const east = ['ชลบุรี', 'ระยอง', 'จันทบุรี', 'ตราด', 'ฉะเชิงเทรา', 'ปราจีนบุรี', 'สระแก้ว'];
+  const north = ['เชียงใหม่', 'เชียงราย', 'ลำพูน', 'ลำปาง', 'แพร่', 'น่าน', 'พะเยา', 'แม่ฮ่องสอน', 'อุตรดิตถ์', 'พิษณุโลก', 'สุโขทัย', 'ตาก', 'กำแพงเพชร', 'พิจิตร', 'เพชรบูรณ์'];
+  const south = ['สุราษฎร์ธานี', 'นครศรีธรรมราช', 'สงขลา', 'ภูเก็ต', 'กระบี่', 'ตรัง', 'พัทลุง', 'ชุมพร', 'ระนอง', 'พังงา', 'สตูล', 'ปัตตานี', 'ยะลา', 'นราธิวาส'];
+  const west = ['กาญจนบุรี', 'ราชบุรี', 'เพชรบุรี', 'ประจวบคีรีขันธ์'];
+  const isan = ['นครราชสีมา', 'ขอนแก่น', 'อุดรธานี', 'อุบลราชธานี', 'บุรีรัมย์', 'สุรินทร์', 'ศรีสะเกษ', 'ร้อยเอ็ด', 'มหาสารคาม', 'กาฬสินธุ์', 'สกลนคร', 'นครพนม', 'มุกดาหาร', 'เลย', 'หนองคาย', 'บึงกาฬ', 'หนองบัวลำภู', 'ชัยภูมิ', 'ยโสธร', 'อำนาจเจริญ'];
+  if (east.some(item => normalized.includes(item))) return 'ภาคตะวันออก';
+  if (north.some(item => normalized.includes(item))) return 'ภาคเหนือ';
+  if (south.some(item => normalized.includes(item))) return 'ภาคใต้';
+  if (west.some(item => normalized.includes(item))) return 'ภาคตะวันตก';
+  if (isan.some(item => normalized.includes(item))) return 'ภาคอีสาน';
+  return 'ภาคกลาง';
+}
+
+function mapLegacyStepToLeadStage(step?: string) {
+  const value = String(step || '').toLowerCase();
+  if (!value) return 'New Lead';
+  if (value.includes('ปิดกิจการ') || value.includes('ไม่สนใจ') || value.includes('closed lost')) return 'Closed Lost';
+  if (value.includes('won') || value.includes('ปิดการขาย')) return 'Closed Won';
+  if (value.includes('trial') || value.includes('pilot') || value.includes('ทดลอง')) return 'Pilot/Trial';
+  if (value.includes('proposal') || value.includes('เสนอราคา')) return 'Proposal Sent';
+  if (value.includes('present') || value.includes('พรีเซน') || value.includes('demo') || value.includes('สาธิต')) return 'Demo Scheduled';
+  if (value.includes('สนใจ')) return 'Interested';
+  if (value.includes('โทร') || value.includes('ติดต่อ') || value.includes('ยื่น') || value.includes('email') || value.includes('อีเมล')) return 'Contacted';
+  return 'New Lead';
+}
+
+function normalizeLeadStatus(status?: string, stage?: string) {
+  const raw = String(status || '').trim();
+  if (['Cold', 'Warm', 'Hot', 'Customer'].includes(raw)) return raw;
+  const mappedStage = mapLegacyStepToLeadStage(stage);
+  if (mappedStage === 'Closed Won') return 'Customer';
+  if (['Demo Scheduled', 'Proposal Sent', 'Pilot/Trial'].includes(mappedStage)) return 'Hot';
+  if (['Contacted', 'Interested'].includes(mappedStage)) return 'Warm';
+  return 'Cold';
+}
+
+function emailFromCell(value?: string) {
+  return String(value || '').replace(/^mailto:/i, '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+}
+
+function buildLeadFromImportRow(row: Record<string, string>, index: number, currentUserId: string) {
+  const schoolName = row.schoolName || row.name || row['รายชื่อโรงเรียน'];
+  const district = row['เขต'] || row.district || '';
+  const province = row['จังหวัด'] || row.province || '';
+  const legacyStep = row.stage || row['อยู่ในขั้นตอน'];
+  const stage = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'].includes(legacyStep)
+    ? legacyStep
+    : mapLegacyStepToLeadStage(legacyStep);
+  const status = normalizeLeadStatus(row.status || row['สถานะ'], legacyStep);
+  const emailCell = row.email || row.contactEmail || row['อีเมล'];
+  const email = emailFromCell(emailCell);
+  const phone = row.phone || row.contactPhone || row['เบอร์โทร'] || '';
+  const contactName = row.contactName || row['ผู้ติดต่อ'] || row.__col_P || '';
+  const noteParts = [
+    row['ระดับชั้น'] ? `ระดับชั้น: ${row['ระดับชั้น']}` : '',
+    row['จำนวน นร.'] ? `จำนวน นร.: ${row['จำนวน นร.']}` : '',
+    row['จำนวน นร. ป.4-6'] ? `จำนวน นร. ป.4-6: ${row['จำนวน นร. ป.4-6']}` : '',
+    legacyStep ? `ขั้นตอนเดิม: ${legacyStep}` : '',
+    row['ติดต่อลูกค้าล่าสุด'] ? `ติดต่อล่าสุด: ${excelSerialToDateText(row['ติดต่อลูกค้าล่าสุด'])}` : '',
+    row['นัดโทรครั้งถัดไป'] ? `นัดโทรครั้งถัดไป: ${excelSerialToDateText(row['นัดโทรครั้งถัดไป'])}` : '',
+    row['Ps / ยื่นหนังสือ'] ? `Ps/ยื่นหนังสือ: ${row['Ps / ยื่นหนังสือ']}` : '',
+    row.Remarks ? `Remarks: ${row.Remarks}` : '',
+    (row.Sale || row.__col_Q) ? `Sale เดิม: ${row.Sale || row.__col_Q}` : '',
+    emailCell && !email ? `ข้อมูลช่องอีเมล: ${emailCell}` : '',
+    contactName ? `ข้อมูลเพิ่มเติม: ${contactName}` : ''
+  ].filter(Boolean);
+
+  return {
+    _id: `l_import_${Date.now()}_${index}`,
+    schoolName,
+    address: [district, province].filter(Boolean).join(' '),
+    zone: row.zone || provinceToZone(province),
+    status,
+    stage,
+    score: status === 'Hot' ? 85 : status === 'Warm' ? 60 : status === 'Customer' ? 100 : stage === 'Closed Lost' ? 0 : 10,
+    gradeLevels: row.gradeLevels || row['ระดับชั้น'] || undefined,
+    educationAuthority: row.educationAuthority || row.__col_C || undefined,
+    district: district || undefined,
+    province: province || undefined,
+    studentCount: numberFromImportCell(row.studentCount || row['จำนวน นร.']),
+    upperElementaryStudentCount: numberFromImportCell(row.upperElementaryStudentCount || row['จำนวน นร. ป.4-6']),
+    lastContactedAt: excelSerialToDateText(row.lastContactedAt || row['ติดต่อลูกค้าล่าสุด']) || undefined,
+    nextCallAt: excelSerialToDateText(row.nextCallAt || row['นัดโทรครั้งถัดไป']) || undefined,
+    documentStatus: row.documentStatus || row['Ps / ยื่นหนังสือ'] || undefined,
+    remarks: row.remarks || row.Remarks || undefined,
+    legacySaleName: row.legacySaleName || row.Sale || row.__col_Q || undefined,
+    source: row.source || 'Excel Import',
+    campaign: row.campaign || 'สรุปรายชื่อโรงเรียนกำลังดำเนินการ',
+    archived: stage === 'Closed Lost' && String(legacyStep || '').includes('ปิดกิจการ'),
+    contacts: phone || email || contactName ? [{
+      name: contactName || row.Sale || row.__col_Q || 'ผู้ติดต่อจากไฟล์นำเข้า',
+      position: emailCell && !email ? emailCell : '',
+      phone,
+      email
+    }] : [],
+    assignedTo: currentUserId,
+    assignmentHistory: [{
+      toUserId: currentUserId,
+      changedBy: currentUserId,
+      reason: 'Excel import',
+      changedAt: new Date()
+    }],
+    notes: noteParts.length ? [{
+      author: 'Excel Import',
+      content: noteParts.join('\n'),
+      type: 'General',
+      createdAt: new Date()
+    }] : [],
+    attachments: [],
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+}
+
+app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw({ type: ['text/csv', 'text/plain', 'application/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'], limit: '10mb' }), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
     res.status(401).json({ message: 'Unauthorized' });
     return;
   }
-  const csvText = String(req.body || '').replace(/^\uFEFF/, '').trim();
-  if (!csvText) {
-    res.status(400).json({ message: 'CSV ว่างหรืออ่านไม่ได้' });
+  const bodyBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body || ''));
+  if (!bodyBuffer.length) {
+    res.status(400).json({ message: 'ไฟล์ว่างหรืออ่านไม่ได้' });
     return;
   }
 
-  const lines = csvText.split(/\r?\n/).filter(Boolean);
-  const headers = parseCsvLine(lines[0]).map(header => header.trim());
+  let rows: Record<string, string>[] = [];
+  const isXlsx = bodyBuffer.subarray(0, 2).toString('utf8') === 'PK'
+    || String(req.headers['content-type'] || '').includes('spreadsheetml');
+
+  if (isXlsx) {
+    rows = parseXlsxRows(bodyBuffer);
+  } else {
+    const csvText = bodyBuffer.toString('utf8').replace(/^\uFEFF/, '').trim();
+    if (!csvText) {
+      res.status(400).json({ message: 'CSV ว่างหรืออ่านไม่ได้' });
+      return;
+    }
+    const lines = csvText.split(/\r?\n/).filter(Boolean);
+    const headers = parseCsvLine(lines[0]).map(header => header.trim());
+    rows = lines.slice(1).map(line => {
+      const cells = parseCsvLine(line);
+      return headers.reduce((acc, header, index) => ({ ...acc, [header]: cells[index] || '' }), {} as Record<string, string>);
+    });
+  }
+
   const existingLeads = await findAll<any>(Leads());
   const imported: any[] = [];
+  const updated: any[] = [];
   const skipped: any[] = [];
 
-  for (const line of lines.slice(1)) {
-    const cells = parseCsvLine(line);
-    const row = headers.reduce((acc, header, index) => ({ ...acc, [header]: cells[index] || '' }), {} as Record<string, string>);
-    const leadDraft = {
-      schoolName: row.schoolName || row.name,
-      address: row.address,
-      zone: row.zone,
-      status: ['Cold', 'Warm', 'Hot', 'Customer'].includes(row.status) ? row.status : 'Cold',
-      score: Number(row.score) || 10,
-      source: row.source || 'CSV Import',
-      campaign: row.campaign,
-      contacts: row.contactName ? [{
-        name: row.contactName,
-        position: row.contactPosition || '',
-        phone: row.contactPhone || '',
-        email: row.contactEmail || undefined
-      }] : []
-    };
+  for (const [index, row] of rows.entries()) {
+    const leadDraft = buildLeadFromImportRow(row, index, currentUser._id);
     if (!leadDraft.schoolName) {
       skipped.push({ reason: 'missing_schoolName', row });
       continue;
     }
     const duplicates = findLeadDuplicates([...existingLeads, ...imported], leadDraft);
     if (duplicates.length > 0) {
-      skipped.push({ reason: 'duplicate', schoolName: leadDraft.schoolName, duplicates });
+      const existingDuplicate = existingLeads.find(item => duplicates.some(duplicate => duplicate._id === item._id));
+      if (existingDuplicate) {
+        const enrichedLead = {
+          ...existingDuplicate,
+          schoolName: leadDraft.schoolName || existingDuplicate.schoolName,
+          address: leadDraft.address || existingDuplicate.address,
+          zone: leadDraft.zone || existingDuplicate.zone,
+          status: leadDraft.status || existingDuplicate.status,
+          stage: leadDraft.stage || existingDuplicate.stage || 'New Lead',
+          score: leadDraft.score !== undefined ? leadDraft.score : existingDuplicate.score,
+          gradeLevels: leadDraft.gradeLevels ?? existingDuplicate.gradeLevels,
+          educationAuthority: leadDraft.educationAuthority ?? existingDuplicate.educationAuthority,
+          district: leadDraft.district ?? existingDuplicate.district,
+          province: leadDraft.province ?? existingDuplicate.province,
+          studentCount: leadDraft.studentCount ?? existingDuplicate.studentCount,
+          upperElementaryStudentCount: leadDraft.upperElementaryStudentCount ?? existingDuplicate.upperElementaryStudentCount,
+          lastContactedAt: leadDraft.lastContactedAt ?? existingDuplicate.lastContactedAt,
+          nextCallAt: leadDraft.nextCallAt ?? existingDuplicate.nextCallAt,
+          documentStatus: leadDraft.documentStatus ?? existingDuplicate.documentStatus,
+          remarks: leadDraft.remarks ?? existingDuplicate.remarks,
+          legacySaleName: leadDraft.legacySaleName ?? existingDuplicate.legacySaleName,
+          source: leadDraft.source || existingDuplicate.source,
+          campaign: leadDraft.campaign || existingDuplicate.campaign,
+          contacts: (leadDraft.contacts || []).length ? leadDraft.contacts : existingDuplicate.contacts,
+          notes: existingDuplicate.notes || [],
+          updatedAt: new Date()
+        };
+        if ('insertOne' in Leads() && !(Leads() instanceof MemoryCollection)) {
+          await (Leads() as any).updateOne({ _id: existingDuplicate._id }, { $set: enrichedLead });
+        } else {
+          const idx = (MemoryStore as any).leads.findIndex((item: any) => item._id === existingDuplicate._id);
+          if (idx !== -1) (MemoryStore as any).leads[idx] = enrichedLead;
+        }
+        updated.push({ _id: existingDuplicate._id, schoolName: enrichedLead.schoolName });
+      } else {
+        skipped.push({ reason: 'duplicate', schoolName: leadDraft.schoolName, duplicates });
+      }
       continue;
     }
-    imported.push({
-      _id: `l_${Date.now()}_${imported.length}`,
-      ...leadDraft,
-      archived: false,
-      assignedTo: currentUser._id,
-      assignmentHistory: [{
-        toUserId: currentUser._id,
-        changedBy: currentUser._id,
-        reason: 'CSV import',
-        changedAt: new Date()
-      }],
-      notes: [],
-      attachments: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
+    imported.push(leadDraft);
   }
 
   await Promise.all(imported.map(lead => Leads().insertOne(lead as any)));
-  await createAuditLog(req, currentUser, 'lead.import_csv', 'lead', {}, { imported: imported.length, skipped: skipped.length });
-  res.status(201).json({ imported: imported.length, skipped });
+  await createAuditLog(req, currentUser, isXlsx ? 'lead.import_xlsx' : 'lead.import_csv', 'lead', {}, { imported: imported.length, updated: updated.length, skipped: skipped.length });
+  res.status(201).json({ imported: imported.length, updated: updated.length, skipped, format: isXlsx ? 'xlsx' : 'csv' });
 });
 
 app.get('/api/leads/:id', requirePermission('manageLeads'), async (req, res) => {
@@ -1883,7 +2203,7 @@ app.get('/api/leads/:id', requirePermission('manageLeads'), async (req, res) => 
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
-  res.json(lead);
+  res.json(hydrateLeadForResponse(lead));
 });
 
 app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLeadBodySchema), async (req, res) => {
@@ -1893,7 +2213,30 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     return;
   }
 
-  const { schoolName, address, zone, status, score, source, campaign, assignedTo, contacts, attachments } = req.body;
+  const {
+    schoolName,
+    address,
+    zone,
+    status,
+    stage,
+    score,
+    gradeLevels,
+    educationAuthority,
+    district,
+    province,
+    studentCount,
+    upperElementaryStudentCount,
+    lastContactedAt,
+    nextCallAt,
+    documentStatus,
+    remarks,
+    legacySaleName,
+    source,
+    campaign,
+    assignedTo,
+    contacts,
+    attachments
+  } = req.body;
   const duplicateLeads = findLeadDuplicates(await findAll<any>(Leads()), { schoolName, contacts });
   if (duplicateLeads.length > 0) {
     res.status(409).json({ message: 'พบข้อมูลโรงเรียนหรือผู้ติดต่อซ้ำในระบบ', duplicates: duplicateLeads });
@@ -1906,7 +2249,19 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     address,
     zone,
     status: status || 'Cold',
+    stage: stage || 'New Lead',
     score: Number(score) || 10,
+    gradeLevels,
+    educationAuthority,
+    district,
+    province,
+    studentCount,
+    upperElementaryStudentCount,
+    lastContactedAt,
+    nextCallAt,
+    documentStatus,
+    remarks,
+    legacySaleName,
     source,
     campaign,
     archived: false,
@@ -1941,7 +2296,33 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     return;
   }
 
-  const { status, score, notes, contacts, assignedTo, transferReason, source, campaign, archived, attachments } = req.body;
+  const {
+    schoolName,
+    address,
+    zone,
+    status,
+    stage,
+    score,
+    gradeLevels,
+    educationAuthority,
+    district,
+    province,
+    studentCount,
+    upperElementaryStudentCount,
+    lastContactedAt,
+    nextCallAt,
+    documentStatus,
+    remarks,
+    legacySaleName,
+    notes,
+    contacts,
+    assignedTo,
+    transferReason,
+    source,
+    campaign,
+    archived,
+    attachments
+  } = req.body;
   if (!userCanSeeLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
@@ -1968,8 +2349,23 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     : lead.assignmentHistory;
   const updatedLead = {
     ...lead,
+    schoolName: schoolName !== undefined ? schoolName : lead.schoolName,
+    address: address !== undefined ? address : lead.address,
+    zone: zone !== undefined ? zone : lead.zone,
     status: status || lead.status,
+    stage: stage || lead.stage || 'New Lead',
     score: score !== undefined ? Number(score) : lead.score,
+    gradeLevels: gradeLevels !== undefined ? gradeLevels : lead.gradeLevels,
+    educationAuthority: educationAuthority !== undefined ? educationAuthority : lead.educationAuthority,
+    district: district !== undefined ? district : lead.district,
+    province: province !== undefined ? province : lead.province,
+    studentCount: studentCount !== undefined ? Number(studentCount) : lead.studentCount,
+    upperElementaryStudentCount: upperElementaryStudentCount !== undefined ? Number(upperElementaryStudentCount) : lead.upperElementaryStudentCount,
+    lastContactedAt: lastContactedAt !== undefined ? lastContactedAt : lead.lastContactedAt,
+    nextCallAt: nextCallAt !== undefined ? nextCallAt : lead.nextCallAt,
+    documentStatus: documentStatus !== undefined ? documentStatus : lead.documentStatus,
+    remarks: remarks !== undefined ? remarks : lead.remarks,
+    legacySaleName: legacySaleName !== undefined ? legacySaleName : lead.legacySaleName,
     source: source !== undefined ? source : lead.source,
     campaign: campaign !== undefined ? campaign : lead.campaign,
     assignedTo: assignedTo || lead.assignedTo,
@@ -1993,7 +2389,7 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     }
   }
 
-  res.json(updatedLead);
+  res.json(hydrateLeadForResponse(updatedLead));
 });
 
 app.get('/api/leads/:id/activity', requirePermission('manageLeads'), async (req, res) => {

@@ -433,8 +433,8 @@ function TasksComponent() {
 
       {/* CREATE TASK MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleCreateTask} className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-6">
+          <form onSubmit={handleCreateTask} className="w-full max-w-lg max-h-[calc(100dvh-7rem)] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">{editingTask ? 'แก้ไขงานหรือนัดหมาย' : 'สร้างงานหรือการนัดหมายใหม่'}</h3>
             {formError && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{formError}</div>

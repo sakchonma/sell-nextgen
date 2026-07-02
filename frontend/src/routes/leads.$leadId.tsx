@@ -13,7 +13,8 @@ import {
   User,
   Activity,
   Repeat2,
-  Paperclip
+  Paperclip,
+  Save
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch, apiJson } from '../lib/api';
@@ -45,12 +46,44 @@ function LeadDetailComponent() {
   const [loadingAI, setLoadingAI] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [coachNote, setCoachNote] = useState('');
+  const [editProfile, setEditProfile] = useState({
+    schoolName: '',
+    address: '',
+    zone: '',
+    gradeLevels: '',
+    educationAuthority: '',
+    district: '',
+    province: '',
+    studentCount: '',
+    upperElementaryStudentCount: '',
+    lastContactedAt: '',
+    nextCallAt: '',
+    documentStatus: '',
+    remarks: '',
+    legacySaleName: ''
+  });
 
   const fetchLeadDetail = () => {
     apiFetch(`/api/leads/${leadId}`)
       .then(data => {
         setLead(data);
         setTransferTo(data.assignedTo || '');
+        setEditProfile({
+          schoolName: data.schoolName || '',
+          address: data.address || '',
+          zone: data.zone || '',
+          gradeLevels: data.gradeLevels || '',
+          educationAuthority: data.educationAuthority || '',
+          district: data.district || '',
+          province: data.province || '',
+          studentCount: data.studentCount !== undefined && data.studentCount !== null ? String(data.studentCount) : '',
+          upperElementaryStudentCount: data.upperElementaryStudentCount !== undefined && data.upperElementaryStudentCount !== null ? String(data.upperElementaryStudentCount) : '',
+          lastContactedAt: data.lastContactedAt || '',
+          nextCallAt: data.nextCallAt || '',
+          documentStatus: data.documentStatus || '',
+          remarks: data.remarks || '',
+          legacySaleName: data.legacySaleName || ''
+        });
       })
       .catch(err => console.error('Failed to load lead details:', err));
   };
@@ -99,6 +132,25 @@ function LeadDetailComponent() {
         fetchActivity();
       })
       .catch(err => console.error('Failed to add note:', err));
+  };
+
+  const handleEditProfileChange = (field: keyof typeof editProfile, value: string) => {
+    setEditProfile(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      ...editProfile,
+      studentCount: editProfile.studentCount ? Number(editProfile.studentCount) : undefined,
+      upperElementaryStudentCount: editProfile.upperElementaryStudentCount ? Number(editProfile.upperElementaryStudentCount) : undefined
+    };
+    apiJson(`/api/leads/${leadId}`, payload, { method: 'PUT' })
+      .then(data => {
+        setLead(data);
+        fetchActivity();
+      })
+      .catch(err => console.error('Failed to save lead profile:', err));
   };
 
   const generateAICoach = () => {
@@ -182,7 +234,7 @@ function LeadDetailComponent() {
   const handleArchiveLead = () => {
     if (!window.confirm('ยืนยัน archive lead นี้?')) return;
     apiFetch(`/api/leads/${leadId}`, { method: 'DELETE' })
-      .then(() => navigate({ to: '/leads/index' }))
+      .then(() => navigate({ to: '/leads' }))
       .catch(err => console.error('Failed to archive lead:', err));
   };
 
@@ -190,7 +242,7 @@ function LeadDetailComponent() {
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
       {/* breadcrumb */}
       <div className="flex items-center gap-1 text-[11px] text-slate-400">
-        <Link to="/leads/index" className="hover:text-indigo-400">Leads & โรงเรียน</Link>
+        <Link to="/leads" className="hover:text-indigo-400">Leads & โรงเรียน</Link>
         <ChevronRight size={12} />
         <span className="text-slate-300 truncate max-w-[200px]">{lead.schoolName}</span>
       </div>
@@ -219,6 +271,16 @@ function LeadDetailComponent() {
             {(lead.source || lead.campaign) && (
               <div className="text-[10px] text-slate-500 mt-1">
                 Source: {lead.source || '-'} {lead.campaign ? `· Campaign: ${lead.campaign}` : ''}
+              </div>
+            )}
+            {(lead.gradeLevels || lead.studentCount || lead.upperElementaryStudentCount || lead.lastContactedAt || lead.nextCallAt || lead.legacySaleName) && (
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[9.5px] text-slate-500">
+                {lead.gradeLevels && <span className="px-2 py-0.5 rounded border border-slate-800">ระดับชั้น: {lead.gradeLevels}</span>}
+                {lead.studentCount !== undefined && <span className="px-2 py-0.5 rounded border border-slate-800">นร.: {Number(lead.studentCount).toLocaleString('th-TH')}</span>}
+                {lead.upperElementaryStudentCount !== undefined && <span className="px-2 py-0.5 rounded border border-slate-800">ป.4-6: {Number(lead.upperElementaryStudentCount).toLocaleString('th-TH')}</span>}
+                {lead.lastContactedAt && <span className="px-2 py-0.5 rounded border border-slate-800">ล่าสุด: {lead.lastContactedAt}</span>}
+                {lead.nextCallAt && <span className="px-2 py-0.5 rounded border border-slate-800">นัดโทร: {lead.nextCallAt}</span>}
+                {lead.legacySaleName && <span className="px-2 py-0.5 rounded border border-slate-800">Sale เดิม: {lead.legacySaleName}</span>}
               </div>
             )}
           </div>
@@ -366,6 +428,85 @@ function LeadDetailComponent() {
 
           {/* Notes and History */}
           <div className="lg:col-span-2 space-y-6">
+            <div className="p-6 rounded-2xl glass-panel">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">ข้อมูลโรงเรียนและข้อมูลนำเข้า</h3>
+                <span className="text-[10px] text-slate-500">แก้ไขข้อมูลจากไฟล์ Excel หรือจากหน้าเว็บได้</span>
+              </div>
+              <form onSubmit={handleSaveProfile} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    ชื่อโรงเรียน
+                    <input value={editProfile.schoolName} onChange={e => handleEditProfileChange('schoolName', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" required />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    เขตพื้นที่ (ภาค)
+                    <input value={editProfile.zone} onChange={e => handleEditProfileChange('zone', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    เขต/อำเภอ
+                    <input value={editProfile.district} onChange={e => handleEditProfileChange('district', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    จังหวัด
+                    <input value={editProfile.province} onChange={e => handleEditProfileChange('province', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block md:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    ที่อยู่รวม
+                    <input value={editProfile.address} onChange={e => handleEditProfileChange('address', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    ระดับชั้น
+                    <input value={editProfile.gradeLevels} onChange={e => handleEditProfileChange('gradeLevels', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    จำนวน นร.
+                    <input type="number" min="0" value={editProfile.studentCount} onChange={e => handleEditProfileChange('studentCount', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    จำนวน นร. ป.4-6
+                    <input type="number" min="0" value={editProfile.upperElementaryStudentCount} onChange={e => handleEditProfileChange('upperElementaryStudentCount', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    สังกัด/ประเภท
+                    <input value={editProfile.educationAuthority} onChange={e => handleEditProfileChange('educationAuthority', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    ติดต่อลูกค้าล่าสุด
+                    <input type="date" value={editProfile.lastContactedAt} onChange={e => handleEditProfileChange('lastContactedAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    นัดโทรครั้งถัดไป
+                    <input type="date" value={editProfile.nextCallAt} onChange={e => handleEditProfileChange('nextCallAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Ps / ยื่นหนังสือ
+                    <input value={editProfile.documentStatus} onChange={e => handleEditProfileChange('documentStatus', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Sale เดิม
+                    <input value={editProfile.legacySaleName} onChange={e => handleEditProfileChange('legacySaleName', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block md:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Remarks
+                    <textarea value={editProfile.remarks} onChange={e => handleEditProfileChange('remarks', e.target.value)} rows={3} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                </div>
+
+                <div className="flex justify-end">
+                  <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer">
+                    <Save size={14} /> บันทึกข้อมูลโรงเรียน
+                  </button>
+                </div>
+              </form>
+            </div>
+
             {/* Note form */}
             <div className="p-6 rounded-2xl glass-panel">
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">เพิ่มบันทึกการประชุม/ความคืบหน้า (Notes)</h3>

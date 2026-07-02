@@ -88,6 +88,7 @@ export async function seedDatabase(db: Db) {
       { _id: 'u6', name: 'กฤษฎา สุขใส', email: 'sales3@nextgen.co.th', passwordHash: '1234', roleId: 'r_sales', rank: 3, zone: 'ภาคใต้', createdAt: new Date(), updatedAt: new Date() },
       { _id: 'u7', name: 'อรอุมา พรมดี', email: 'sales4@nextgen.co.th', passwordHash: '1234', roleId: 'r_sales', rank: 3, zone: 'ภาคตะวันตก', createdAt: new Date(), updatedAt: new Date() },
       { _id: 'u8', name: 'ปิยะ ศรีทอง', email: 'sales5@nextgen.co.th', passwordHash: '1234', roleId: 'r_sales', rank: 3, zone: 'ภาคอีสาน', createdAt: new Date(), updatedAt: new Date() },
+      { _id: 'u15', name: 'ศุภกิจ ใจกลาง', email: 'sales6@nextgen.co.th', passwordHash: '1234', roleId: 'r_sales', rank: 3, zone: 'ภาคกลาง', createdAt: new Date(), updatedAt: new Date() },
       { _id: 'u9', name: 'วรากร ดีงาม', email: 'central@nextgen.co.th', passwordHash: '1234', roleId: 'r_support', rank: 2, createdAt: new Date(), updatedAt: new Date() },
       { _id: 'u10', name: 'สุภาพร คลังทรัพย์', email: 'finance@nextgen.co.th', passwordHash: '1234', roleId: 'r_support', rank: 2, createdAt: new Date(), updatedAt: new Date() },
       { _id: 'u11', name: 'ดร.ชนม์ชนก วิชัย', email: 'academic1@nextgen.co.th', passwordHash: '1234', roleId: 'r_support', rank: 2, createdAt: new Date(), updatedAt: new Date() },
@@ -145,7 +146,12 @@ export async function seedDatabase(db: Db) {
         address: 'อ.เมือง จ.ชลบุรี',
         zone: 'ภาคตะวันออก',
         status: 'Hot',
+        stage: 'Demo Scheduled',
         score: 85,
+        gradeLevels: 'ประถม-มัธยมต้น',
+        province: 'ชลบุรี',
+        studentCount: 1200,
+        upperElementaryStudentCount: 360,
         contacts: [
           { name: 'ครูแอน', position: 'หัวหน้ากลุ่มสาระคอมพิวเตอร์', phone: '081-234-5678', email: 'ann@chonburi.ac.th' }
         ],
@@ -162,7 +168,12 @@ export async function seedDatabase(db: Db) {
         address: 'อ.เมือง จ.เชียงใหม่',
         zone: 'ภาคเหนือ',
         status: 'Warm',
+        stage: 'Proposal Sent',
         score: 60,
+        gradeLevels: 'ประถม-มัธยมปลาย',
+        province: 'เชียงใหม่',
+        studentCount: 900,
+        upperElementaryStudentCount: 280,
         contacts: [
           { name: 'ครูสุเทพ', position: 'หัวหน้างาน ICT', phone: '089-876-5432' }
         ],
@@ -179,7 +190,12 @@ export async function seedDatabase(db: Db) {
         address: 'อ.เมือง จ.สุราษฎร์ธานี',
         zone: 'ภาคใต้',
         status: 'Cold',
+        stage: 'New Lead',
         score: 30,
+        gradeLevels: 'ประถมศึกษา',
+        province: 'สุราษฎร์ธานี',
+        studentCount: 650,
+        upperElementaryStudentCount: 210,
         contacts: [
           { name: 'ครูสมเจตน์', position: 'งานสารสนเทศ', phone: '077-111-222' }
         ],
