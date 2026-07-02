@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // แก้ตรงนี้: เอา https:// ออก ให้เหลือแค่ชื่อโดเมน
-    allowedHosts: (process.env.VITE_ALLOWED_HOSTS || 'f314-49-228-184-149.ngrok-free.app')
+    allowedHosts: (process.env.VITE_ALLOWED_HOSTS || 'd3db-2001-fb1-3e-f0e0-91da-d9e4-907-bd85.ngrok-free.app')
       .split(',')
       .map(host => host.trim())
       .filter(Boolean),
