@@ -1,5 +1,5 @@
 import { createRoute, Link } from '@tanstack/react-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { 
@@ -16,6 +16,7 @@ import { apiFetch, apiJson } from '../lib/api';
 
 const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
 const LEAD_STAGE_OPTIONS = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'];
+const LEADS_PAGE_SIZE = 20;
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -43,17 +44,78 @@ function LeadsIndexComponent() {
   const [leadError, setLeadError] = useState('');
   const [leadMessage, setLeadMessage] = useState('');
   const [updatingLeadId, setUpdatingLeadId] = useState('');
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [hasMoreLeads, setHasMoreLeads] = useState(true);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const requestSeqRef = useRef(0);
+  const loadingLeadsRef = useRef(false);
+  const leadsLengthRef = useRef(0);
 
-  const fetchLeads = () => {
-    apiFetch('/api/leads')
-      .then(data => setLeads(data))
-      .catch(err => console.error('Failed to load leads:', err));
-  };
+  const buildLeadQuery = useCallback((offset: number) => {
+    const params = new URLSearchParams({
+      limit: String(LEADS_PAGE_SIZE),
+      offset: String(offset),
+      search,
+      zone: selectedZone,
+      status: selectedStatus,
+      assignedTo: selectedOwner
+    });
+    if (minScore) params.set('minScore', minScore);
+    if (maxScore) params.set('maxScore', maxScore);
+    return `/api/leads?${params.toString()}`;
+  }, [maxScore, minScore, search, selectedOwner, selectedStatus, selectedZone]);
+
+  const fetchLeads = useCallback((mode: 'reset' | 'append' = 'reset') => {
+    if (loadingLeadsRef.current && mode === 'append') return;
+    const offset = mode === 'append' ? leadsLengthRef.current : 0;
+    const requestSeq = ++requestSeqRef.current;
+    loadingLeadsRef.current = true;
+    if (mode === 'reset') {
+      leadsLengthRef.current = 0;
+      setLeads([]);
+      setHasMoreLeads(true);
+    }
+    setLoadingLeads(true);
+    apiFetch(buildLeadQuery(offset))
+      .then(data => {
+        if (requestSeq !== requestSeqRef.current) return;
+        const items = Array.isArray(data) ? data : data.items || [];
+        setLeads(prev => {
+          const nextLeads = mode === 'append' ? [...prev, ...items] : items;
+          leadsLengthRef.current = nextLeads.length;
+          return nextLeads;
+        });
+        setTotalLeads(Array.isArray(data) ? items.length : Number(data.total || 0));
+        setHasMoreLeads(Array.isArray(data) ? false : Boolean(data.hasMore));
+      })
+      .catch(err => console.error('Failed to load leads:', err))
+      .finally(() => {
+        if (requestSeq === requestSeqRef.current) {
+          loadingLeadsRef.current = false;
+          setLoadingLeads(false);
+        }
+      });
+  }, [buildLeadQuery]);
+
+  const lastLeadRef = useCallback((node: HTMLDivElement | null) => {
+    if (loadingLeads) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0]?.isIntersecting && hasMoreLeads) {
+        fetchLeads('append');
+      }
+    }, { rootMargin: '240px' });
+    if (node) observerRef.current.observe(node);
+  }, [fetchLeads, hasMoreLeads, loadingLeads]);
 
   useEffect(() => {
-    fetchLeads();
     apiFetch('/api/users').then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
   }, [user]);
+
+  useEffect(() => {
+    fetchLeads('reset');
+  }, [fetchLeads]);
 
   const handleAddLead = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,7 +137,7 @@ function LeadsIndexComponent() {
         setNewLeadAddress('');
         setNewLeadStage('New Lead');
         setNewLeadCampaign('');
-        fetchLeads();
+        fetchLeads('reset');
       })
       .catch(err => setLeadError(err.message || 'เพิ่มลีดไม่สำเร็จ'));
   };
@@ -98,7 +160,7 @@ function LeadsIndexComponent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Import CSV ไม่สำเร็จ');
       setLeadMessage(`Import สำเร็จ ${data.imported} รายการ${data.skipped?.length ? `, ข้าม ${data.skipped.length} รายการ` : ''}`);
-      fetchLeads();
+      fetchLeads('reset');
     } catch (err: any) {
       setLeadError(err.message || 'Import CSV ไม่สำเร็จ');
     }
@@ -154,19 +216,6 @@ function LeadsIndexComponent() {
     if (stage === 'Contacted') return 'bg-blue-500/10 text-blue-400 border-blue-500/25';
     return 'bg-slate-800 text-slate-400 border-slate-700';
   };
-
-  const filteredLeads = Array.isArray(leads)
-    ? leads.filter(l => {
-        const matchesSearch = l.schoolName.toLowerCase().includes(search.toLowerCase()) ||
-                              l.address.toLowerCase().includes(search.toLowerCase());
-        const matchesZone = selectedZone === 'All' || l.zone === selectedZone;
-        const matchesStatus = selectedStatus === 'All' || l.status === selectedStatus;
-        const matchesOwner = selectedOwner === 'All' || l.assignedTo === selectedOwner;
-        const matchesMinScore = !minScore || Number(l.score || 0) >= Number(minScore);
-        const matchesMaxScore = !maxScore || Number(l.score || 0) <= Number(maxScore);
-        return matchesSearch && matchesZone && matchesStatus && matchesOwner && matchesMinScore && matchesMaxScore;
-      })
-    : [];
 
   const ownerName = (ownerId?: string) => users.find(item => item._id === ownerId)?.name || 'ไม่ระบุผู้ดูแล';
 
@@ -266,9 +315,21 @@ function LeadsIndexComponent() {
       </div>
 
       {/* LEADS LIST */}
+      <div className="flex items-center justify-between text-[11px] text-slate-500">
+        <span>แสดง {leads.length.toLocaleString('th-TH')} จาก {totalLeads.toLocaleString('th-TH')} รายการ</span>
+        {loadingLeads && leads.length === 0 && (
+          <span className="inline-flex items-center gap-1.5 text-indigo-400">
+            <Loader2 size={12} className="animate-spin" /> กำลังโหลดข้อมูล
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredLeads.map(lead => (
-          <div key={lead._id} className="p-5 rounded-2xl glass-card text-left flex flex-col justify-between h-48 border border-slate-800 bg-[#121826]/30">
+        {leads.map((lead, index) => (
+          <div
+            key={lead._id}
+            ref={index === leads.length - 1 ? lastLeadRef : undefined}
+            className="p-5 rounded-2xl glass-card text-left flex flex-col justify-between h-48 border border-slate-800 bg-[#121826]/30"
+          >
             <div>
               <div className="flex justify-between items-start gap-3">
                 <Link 
@@ -348,12 +409,23 @@ function LeadsIndexComponent() {
             </div>
           </div>
         ))}
-        {filteredLeads.length === 0 && (
+        {leads.length === 0 && !loadingLeads && (
           <div className="col-span-full py-16 text-center text-slate-500 text-xs">
             ไม่พบข้อมูลโรงเรียนในเงื่อนไขการค้นหา
           </div>
         )}
       </div>
+
+      {loadingLeads && leads.length > 0 && (
+        <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-500">
+          <Loader2 size={14} className="animate-spin text-indigo-400" /> กำลังโหลดเพิ่มอีก {LEADS_PAGE_SIZE} รายการ
+        </div>
+      )}
+      {!hasMoreLeads && leads.length > 0 && (
+        <div className="py-4 text-center text-[11px] text-slate-500">
+          โหลดข้อมูลครบแล้ว
+        </div>
+      )}
 
       {/* ADD LEAD MODAL */}
       {showAddModal && (

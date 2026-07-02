@@ -1761,8 +1761,13 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     assignedTo = 'All',
     minScore,
     maxScore,
-    includeArchived = 'false'
+    includeArchived = 'false',
+    limit,
+    offset
   } = req.query;
+  const hasPagingParams = limit !== undefined || offset !== undefined;
+  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const pageOffset = Math.max(Number(offset) || 0, 0);
   const searchText = String(search).trim().toLowerCase();
   leadsArray = leadsArray.filter(lead => {
     if (includeArchived !== 'true' && lead.archived) return false;
@@ -1784,12 +1789,23 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
   // Filter leads based on Sales zone if current user is Sales (rank 3)
   if (currentUser.rank === 3) {
     const userZone = currentUser.zone || '';
-    const filteredLeads = leadsArray.filter(l => l.assignedTo === currentUser._id || l.zone === userZone);
-    res.json(filteredLeads.map(hydrateLeadForResponse));
+    leadsArray = leadsArray.filter(l => l.assignedTo === currentUser._id || l.zone === userZone);
+  }
+
+  const hydratedLeads = leadsArray.map(hydrateLeadForResponse);
+  if (hasPagingParams) {
+    const items = hydratedLeads.slice(pageOffset, pageOffset + pageLimit);
+    res.json({
+      items,
+      total: hydratedLeads.length,
+      limit: pageLimit,
+      offset: pageOffset,
+      hasMore: pageOffset + items.length < hydratedLeads.length
+    });
     return;
   }
 
-  res.json(leadsArray.map(hydrateLeadForResponse));
+  res.json(hydratedLeads);
 });
 
 app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, res) => {
