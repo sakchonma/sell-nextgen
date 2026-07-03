@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 5173,
     allowedHosts: [
-      "admin-nextopia.nextgen-education.com",
+      "crm.nextgen-education.com",
       // "9841-2001-fb1-3e-f0e0-5c46-d88a-d761-8d9a.ngrok-free.app",
     ],
     proxy: {
