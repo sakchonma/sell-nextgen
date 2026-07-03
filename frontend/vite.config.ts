@@ -12,11 +12,10 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    // แก้ตรงนี้: เอา https:// ออก ให้เหลือแค่ชื่อโดเมน
-    allowedHosts: (process.env.VITE_ALLOWED_HOSTS || 'd3db-2001-fb1-3e-f0e0-91da-d9e4-907-bd85.ngrok-free.app')
-      .split(',')
-      .map(host => host.trim())
-      .filter(Boolean),
+    allowedHosts: [
+      "admin-nextopia.nextgen-education.com",
+      // "9841-2001-fb1-3e-f0e0-5c46-d88a-d761-8d9a.ngrok-free.app",
+    ],
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5001',
