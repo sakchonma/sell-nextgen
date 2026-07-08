@@ -50,10 +50,9 @@ function TasksComponent() {
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
   const [leadId, setLeadId] = useState('');
+  const [leadSearch, setLeadSearch] = useState('');
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [opportunityId, setOpportunityId] = useState('');
-  const [reminderMinutesBefore, setReminderMinutesBefore] = useState('30');
-  const [recurrenceRule, setRecurrenceRule] = useState('none');
-  const [recurrenceCount, setRecurrenceCount] = useState('1');
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
   
   // Reject Dialog State
@@ -88,10 +87,9 @@ function TasksComponent() {
     setStartAt('');
     setEndAt('');
     setLeadId('');
+    setLeadSearch('');
+    setShowLeadDropdown(false);
     setOpportunityId('');
-    setReminderMinutesBefore('30');
-    setRecurrenceRule('none');
-    setRecurrenceCount('1');
     setInvitedIds([]);
     setConflicts([]);
     setEditingTask(null);
@@ -105,13 +103,27 @@ function TasksComponent() {
     setStartAt(new Date(task.startAt).toISOString().slice(0, 16));
     setEndAt(new Date(task.endAt).toISOString().slice(0, 16));
     setLeadId(task.leadId || '');
+    setLeadSearch(leads.find(lead => lead._id === task.leadId)?.schoolName || '');
+    setShowLeadDropdown(false);
     setOpportunityId(task.opportunityId || '');
     setInvitedIds((task.participants || []).map((p: any) => p.userId).filter((id: string) => id !== user?._id));
-    setReminderMinutesBefore('30');
-    setRecurrenceRule('none');
-    setRecurrenceCount('1');
     setFormError('');
     setShowAddModal(true);
+  };
+
+  const filteredLeads = leads.filter(lead =>
+    lead.schoolName.toLowerCase().includes(leadSearch.trim().toLowerCase())
+  );
+
+  const selectLead = (lead: { _id: string; schoolName: string } | null) => {
+    if (!lead) {
+      setLeadId('');
+      setLeadSearch('');
+    } else {
+      setLeadId(lead._id);
+      setLeadSearch(lead.schoolName);
+    }
+    setShowLeadDropdown(false);
   };
 
   const checkConflicts = () => {
@@ -140,9 +152,9 @@ function TasksComponent() {
       endAt,
       leadId: leadId || undefined,
       opportunityId: opportunityId || undefined,
-      reminderMinutesBefore: Number(reminderMinutesBefore),
-      recurrenceRule,
-      recurrenceCount: Number(recurrenceCount) || 1,
+      reminderMinutesBefore: 30,
+      recurrenceRule: 'none',
+      recurrenceCount: 1,
       participantIds: [...invitedIds, user?._id].filter(Boolean)
     };
     const request = editingTask
@@ -505,26 +517,53 @@ function TasksComponent() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <select value={leadId} onChange={e => setLeadId(e.target.value)} className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                <option value="">ไม่ผูก Lead</option>
-                {leads.map(lead => <option key={lead._id} value={lead._id}>{lead.schoolName}</option>)}
-              </select>
-              <select value={opportunityId} onChange={e => setOpportunityId(e.target.value)} className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+              <div className="relative">
+                <label className="block text-xs text-slate-400 font-semibold mb-1">โรงเรียน</label>
+                <input
+                  type="text"
+                  value={leadSearch}
+                  onChange={(e) => {
+                    setLeadSearch(e.target.value);
+                    setLeadId('');
+                    setShowLeadDropdown(true);
+                  }}
+                  onFocus={() => setShowLeadDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowLeadDropdown(false), 150)}
+                  placeholder="ค้นหาชื่อโรงเรียน..."
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+                {showLeadDropdown && (
+                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-800 bg-[#090d16] shadow-xl">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => selectLead(null)}
+                      className="w-full px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-800"
+                    >
+                      ไม่ผูก Lead
+                    </button>
+                    {filteredLeads.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-slate-500">ไม่พบโรงเรียน</div>
+                    ) : (
+                      filteredLeads.map(lead => (
+                        <button
+                          key={lead._id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectLead(lead)}
+                          className={`w-full px-3 py-2 text-left text-xs hover:bg-slate-800 ${leadId === lead._id ? 'text-indigo-300 bg-indigo-500/10' : 'text-slate-200'}`}
+                        >
+                          {lead.schoolName}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <select value={opportunityId} onChange={e => setOpportunityId(e.target.value)} className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 self-end">
                 <option value="">ไม่ผูก Opportunity</option>
                 {opportunities.map(opp => <option key={opp._id} value={opp._id}>{opp.title}</option>)}
               </select>
-              <input type="number" min="0" max="10080" value={reminderMinutesBefore} onChange={e => setReminderMinutesBefore(e.target.value)} placeholder="Reminder minutes" className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-              {!editingTask && (
-                <div className="flex gap-2">
-                  <select value={recurrenceRule} onChange={e => setRecurrenceRule(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                    <option value="none">ไม่ทำซ้ำ</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                  <input type="number" min="1" max="24" value={recurrenceCount} onChange={e => setRecurrenceCount(e.target.value)} className="w-20 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                </div>
-              )}
             </div>
 
             {conflicts.length > 0 && (
