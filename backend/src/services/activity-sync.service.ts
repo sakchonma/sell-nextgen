@@ -1,4 +1,4 @@
-import { Leads, Tasks, MemoryStore, MemoryCollection } from '../models/db.js';
+import { Leads, Tasks, MemoryStore, MemoryCollection, Users } from '../models/db.js';
 import type { Lead, Task } from '../types/index.js';
 
 type SourceRef = { type: string; leadId?: string; noteKey?: string };
@@ -58,6 +58,16 @@ async function deleteTaskById(taskId: string) {
     const idx = (MemoryStore as any).tasks?.findIndex((t: any) => t._id === taskId);
     if (idx !== -1) (MemoryStore as any).tasks.splice(idx, 1);
   }
+}
+
+function noteTaskId(leadId: string, noteKey: string) {
+  const slug = noteKey.replace(/[^a-zA-Z0-9|]/g, '_').slice(0, 64);
+  return `t_sync_${leadId}_note_${slug}`;
+}
+
+async function findTaskOnLeadDate(leadId: string, dateStr: string) {
+  const tasks = await findAll<any>(Tasks(), { leadId });
+  return tasks.find((task: any) => formatDateOnly(task.startAt) === dateStr);
 }
 
 async function findLinkedTask(leadId: string, sourceType: string, noteKey?: string) {
@@ -127,7 +137,7 @@ export async function syncLeadNotesAdded(lead: Lead, newNotes: any[], creatorId:
     const taskType = noteTypeToTaskType(type);
     const titlePrefix = type === 'Email' ? 'อีเมล' : type;
     await upsertTask({
-      _id: existing?._id || `t_sync_${lead._id}_note_${Date.now()}`,
+      _id: existing?._id || noteTaskId(lead._id, key),
       title: `${titlePrefix}: ${lead.schoolName}`,
       description: note.content,
       type: taskType,
@@ -242,4 +252,99 @@ export async function logActivity(params: {
   }
 
   return { taskId, note };
+}
+
+export type ActivitySyncBackfillStats = {
+  leadsProcessed: number;
+  nextCallTasksSynced: number;
+  noteTasksSynced: number;
+  existingTasksLinked: number;
+  leadNextCallFromTasks: number;
+  skippedLeads: number;
+  dryRun: boolean;
+};
+
+export async function runActivitySyncBackfill(options: { dryRun?: boolean } = {}): Promise<ActivitySyncBackfillStats> {
+  const dryRun = options.dryRun ?? false;
+  const stats: ActivitySyncBackfillStats = {
+    leadsProcessed: 0,
+    nextCallTasksSynced: 0,
+    noteTasksSynced: 0,
+    existingTasksLinked: 0,
+    leadNextCallFromTasks: 0,
+    skippedLeads: 0,
+    dryRun,
+  };
+
+  const [leads, users, tasks] = await Promise.all([
+    findAll<Lead>(Leads()),
+    findAll<any>(Users()),
+    findAll<any>(Tasks()),
+  ]);
+
+  const fallbackUserId = users.find((u: any) => u.rank === 3)?._id
+    || users.find((u: any) => u.rank >= 4)?._id
+    || users[0]?._id
+    || 'backfill_system';
+
+  for (const lead of leads) {
+    stats.leadsProcessed += 1;
+    const creatorId = lead.assignedTo || fallbackUserId;
+    const nextCallAt = lead.nextCallAt?.trim();
+
+    if (nextCallAt) {
+      const linked = await findLinkedTask(lead._id, 'lead_next_call');
+      const existingOnDate = linked ? null : await findTaskOnLeadDate(lead._id, nextCallAt);
+
+      if (!linked && existingOnDate && !existingOnDate.sourceRef) {
+        if (!dryRun) {
+          await upsertTask({
+            ...existingOnDate,
+            sourceRef: { type: 'lead_next_call', leadId: lead._id },
+            updatedAt: new Date(),
+          });
+        }
+        stats.existingTasksLinked += 1;
+      } else if (!linked) {
+        if (!dryRun) await syncLeadNextCallAt(lead, creatorId);
+        stats.nextCallTasksSynced += 1;
+      }
+    }
+
+    const activityNotes = (lead.notes || []).filter((note: any) =>
+      ['Call', 'Meeting', 'FollowUp', 'Email'].includes(note.type || '')
+    );
+
+    for (const note of activityNotes) {
+      const key = leadNoteKey(note);
+      const existing = await findLinkedTask(lead._id, 'lead_note', key);
+      if (existing) continue;
+      if (!dryRun) {
+        await syncLeadNotesAdded(lead, [note], creatorId);
+      }
+      stats.noteTasksSynced += 1;
+    }
+
+    if (!nextCallAt && activityNotes.length === 0) {
+      stats.skippedLeads += 1;
+    }
+  }
+
+  for (const task of tasks) {
+    if (!task.leadId) continue;
+    const ref = task.sourceRef as SourceRef | undefined;
+    if (ref?.type === 'lead_next_call') continue;
+    if (task.type !== 'FollowUp') continue;
+
+    const lead = leads.find(item => item._id === task.leadId);
+    if (!lead) continue;
+
+    const taskDate = formatDateOnly(task.startAt);
+    if (lead.nextCallAt === taskDate) continue;
+
+    if (!dryRun) await syncTaskToLead(task);
+    stats.leadNextCallFromTasks += 1;
+  }
+
+  return stats;
 }
