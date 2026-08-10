@@ -27,6 +27,13 @@ import {
 } from './models/db.js';
 import { getAICoachSuggestions, parseConversationalLog } from './services/ai.service.js';
 import type { ConversationalTaskType, ParsedConversationalLog, UrgencyLevel } from './services/ai.service.js';
+import {
+  syncLeadAfterUpdate,
+  syncTaskAfterUpdate,
+  syncTaskCompletedToLead,
+  syncTaskToLead,
+  logActivity
+} from './services/activity-sync.service.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
 import { hashPassword, validatePasswordPolicy, verifyPassword } from './utils/password.js';
 import { doTimeRangesOverlap, evaluateAvailability } from './utils/schedule.js';
@@ -463,6 +470,15 @@ const taskCommentBodySchema = z.object({
   content: nonEmptyTextSchema
 }).strict();
 
+const logActivityBodySchema = z.object({
+  leadId: idSchema,
+  type: z.enum(['Call', 'Email', 'Meeting', 'FollowUp']),
+  content: nonEmptyTextSchema,
+  startAt: dateStringSchema,
+  endAt: dateStringSchema.optional(),
+  reminderMinutesBefore: z.coerce.number().int().min(0).max(10080).optional()
+}).strict();
+
 const notificationPreferencesBodySchema = z.object({
   categories: z.object({
     Request: z.coerce.boolean().default(true),
@@ -549,7 +565,7 @@ const leadContactSchema = z.object({
 const leadNoteSchema = z.object({
   author: nonEmptyTextSchema,
   content: nonEmptyTextSchema,
-  type: z.enum(['General', 'Call', 'Meeting', 'Coaching', 'FollowUp']).default('General'),
+  type: z.enum(['General', 'Call', 'Meeting', 'Coaching', 'FollowUp', 'Email']).default('General'),
   createdAt: dateStringSchema.optional()
 }).passthrough();
 
@@ -2407,6 +2423,85 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     }
   }
 
+  await syncLeadAfterUpdate(lead, updatedLead, currentUser._id, notes || undefined);
+  res.json(hydrateLeadForResponse(updatedLead));
+});
+
+function leadNoteKey(note: { createdAt: any; author: string }) {
+  return `${new Date(note.createdAt).toISOString()}|${note.author}`;
+}
+
+function findLeadNoteIndex(notes: any[], noteKey: string) {
+  return notes.findIndex(note => leadNoteKey(note) === noteKey);
+}
+
+const updateLeadNoteBodySchema = z.object({
+  content: nonEmptyTextSchema.optional(),
+  type: z.enum(['General', 'Call', 'Meeting', 'Coaching', 'FollowUp', 'Email']).optional()
+}).strict();
+
+app.patch('/api/leads/:id/notes/:noteKey', requirePermission('manageLeads'), validateBody(updateLeadNoteBodySchema), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  const leadsColl = Leads();
+  const lead = await leadsColl.findOne({ _id: req.params.id } as any);
+  if (!lead || !userCanSeeLead(currentUser, lead)) {
+    res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
+    return;
+  }
+  const noteKeyParam = String(req.params.noteKey);
+  const noteKey = decodeURIComponent(noteKeyParam);
+  const notes = [...(lead.notes || [])];
+  const idx = findLeadNoteIndex(notes, noteKey);
+  if (idx === -1) {
+    res.status(404).json({ message: 'ไม่พบบันทึก' });
+    return;
+  }
+  const { content, type } = req.body;
+  notes[idx] = {
+    ...notes[idx],
+    content: content !== undefined ? content : notes[idx].content,
+    type: type !== undefined ? type : notes[idx].type
+  };
+  const updatedLead = { ...lead, notes, updatedAt: new Date() };
+  if ('insertOne' in leadsColl && !(leadsColl instanceof MemoryCollection)) {
+    await (leadsColl as any).updateOne({ _id: req.params.id }, { $set: updatedLead });
+  } else {
+    const idxLead = (MemoryStore as any).leads.findIndex((item: any) => item._id === req.params.id);
+    if (idxLead !== -1) (MemoryStore as any).leads[idxLead] = updatedLead;
+  }
+  res.json(hydrateLeadForResponse(updatedLead));
+});
+
+app.delete('/api/leads/:id/notes/:noteKey', requirePermission('manageLeads'), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  const leadsColl = Leads();
+  const lead = await leadsColl.findOne({ _id: req.params.id } as any);
+  if (!lead || !userCanSeeLead(currentUser, lead)) {
+    res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
+    return;
+  }
+  const noteKeyParam = String(req.params.noteKey);
+  const noteKey = decodeURIComponent(noteKeyParam);
+  const notes = (lead.notes || []).filter((note: any) => leadNoteKey(note) !== noteKey);
+  if (notes.length === (lead.notes || []).length) {
+    res.status(404).json({ message: 'ไม่พบบันทึก' });
+    return;
+  }
+  const updatedLead = { ...lead, notes, updatedAt: new Date() };
+  if ('insertOne' in leadsColl && !(leadsColl instanceof MemoryCollection)) {
+    await (leadsColl as any).updateOne({ _id: req.params.id }, { $set: updatedLead });
+  } else {
+    const idxLead = (MemoryStore as any).leads.findIndex((item: any) => item._id === req.params.id);
+    if (idxLead !== -1) (MemoryStore as any).leads[idxLead] = updatedLead;
+  }
   res.json(hydrateLeadForResponse(updatedLead));
 });
 
@@ -2728,6 +2823,108 @@ app.put('/api/opportunities/:id/stage', requirePermission('managePipeline'), val
 });
 
 // ------------------------------------------------------------------------------
+// ACTIVITY & TASK TRACKING
+// ------------------------------------------------------------------------------
+app.get('/api/activities', requirePermission('manageTasks'), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+
+  const [tasks, leads] = await Promise.all([
+    findAll<any>(Tasks()),
+    findAll<any>(Leads())
+  ]);
+
+  const visibleTasks = tasks.filter(task => userCanSeeTask(currentUser, task));
+  const visibleLeads = leads.filter(lead => userCanSeeLead(currentUser, lead));
+  const leadMap = new Map(visibleLeads.map(lead => [lead._id, lead]));
+
+  const feed = [
+    ...visibleTasks.map(task => ({
+      _id: task._id,
+      kind: 'Task',
+      activityType: task.type,
+      title: task.title,
+      description: task.description || task.status,
+      leadId: task.leadId,
+      schoolName: task.leadId ? leadMap.get(task.leadId)?.schoolName : undefined,
+      startAt: task.startAt,
+      endAt: task.endAt,
+      status: task.status,
+      reminderAt: task.reminderAt,
+      createdAt: task.startAt || task.createdAt
+    })),
+    ...visibleLeads.flatMap(lead =>
+      (lead.notes || []).map((note: any) => ({
+        _id: `note_${leadNoteKey(note)}`,
+        kind: 'Note',
+        activityType: note.type || 'General',
+        title: `${note.type || 'Note'}: ${lead.schoolName}`,
+        description: note.content,
+        leadId: lead._id,
+        schoolName: lead.schoolName,
+        actorName: note.author,
+        createdAt: note.createdAt
+      }))
+    )
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const now = Date.now();
+  const upcoming = visibleTasks
+    .filter(task => task.status !== 'Completed')
+    .filter(task => {
+      const start = asDate(task.startAt).getTime();
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      return start >= now - 24 * 60 * 60 * 1000 && start <= now + sevenDays;
+    })
+    .sort((a, b) => asDate(a.startAt).getTime() - asDate(b.startAt).getTime())
+    .map(task => ({
+      _id: task._id,
+      title: task.title,
+      type: task.type,
+      status: task.status,
+      startAt: task.startAt,
+      endAt: task.endAt,
+      leadId: task.leadId,
+      schoolName: task.leadId ? leadMap.get(task.leadId)?.schoolName : undefined,
+      reminderAt: task.reminderAt,
+      overdue: asDate(task.endAt).getTime() < now
+    }));
+
+  res.json({ feed, upcoming });
+});
+
+app.post('/api/activities/log', requirePermission('manageTasks'), validateBody(logActivityBodySchema), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  const lead = await Leads().findOne({ _id: req.body.leadId } as any);
+  if (!lead || !userCanSeeLead(currentUser, lead)) {
+    res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
+    return;
+  }
+  try {
+    const result = await logActivity({
+      leadId: req.body.leadId,
+      type: req.body.type,
+      content: req.body.content,
+      startAt: req.body.startAt,
+      endAt: req.body.endAt,
+      reminderMinutesBefore: req.body.reminderMinutesBefore,
+      creatorId: currentUser._id,
+      authorName: currentUser.name
+    });
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message || 'บันทึกกิจกรรมไม่สำเร็จ' });
+  }
+});
+
+// ------------------------------------------------------------------------------
 // TASKS & APPOINTMENTS
 // ------------------------------------------------------------------------------
 function userCanSeeTask(user: any, task: any) {
@@ -2880,6 +3077,9 @@ app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTask
         '/tasks'
       ))
   );
+  for (const task of createdTasks) {
+    await syncTaskToLead(task);
+  }
   res.status(201).json({ tasks: createdTasks, conflicts: baseConflicts });
 });
 
@@ -2923,6 +3123,7 @@ app.put('/api/tasks/:id', requirePermission('manageTasks'), validateBody(updateT
   delete (updatedTask as any).reminderMinutesBefore;
   await (tasksColl as any).updateOne({ _id: req.params.id }, { $set: updatedTask });
   await createAuditLog(req, currentUser, 'task.update', 'task', updatedTask, { before: task, after: updatedTask });
+  await syncTaskAfterUpdate(task, updatedTask);
   res.json(updatedTask);
 });
 
@@ -3007,6 +3208,7 @@ app.put('/api/tasks/:id/complete', requirePermission('manageTasks'), async (req,
   const updatedTask = { ...task, status: 'Completed', updatedAt: new Date() };
   await (tasksColl as any).updateOne({ _id: req.params.id }, { $set: updatedTask });
   await createAuditLog(req, currentUser, 'task.complete', 'task', updatedTask);
+  await syncTaskCompletedToLead(updatedTask);
   res.json(updatedTask);
 });
 

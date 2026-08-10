@@ -16,6 +16,8 @@ import {
   Grid3X3
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { dateKey, isSameLocalDay, isTodayLocal } from '../lib/datetime';
+import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -81,10 +83,8 @@ function CalendarComponent() {
   });
 
   const getTasksForDay = (day: Date) => {
-    const dayStr = day.toISOString().split('T')[0];
-    return filteredTasks.filter(t => 
-      new Date(t.startAt).toISOString().split('T')[0] === dayStr
-    );
+    const dayStr = dateKey(day);
+    return filteredTasks.filter(t => dateKey(t.startAt) === dayStr);
   };
 
   const days = getDaysInMonth(currentDate);
@@ -100,14 +100,15 @@ function CalendarComponent() {
     return day;
   });
   const dayTasks = filteredTasks
-    .filter(task => new Date(task.startAt).toDateString() === currentDate.toDateString())
+    .filter(task => isSameLocalDay(task.startAt, currentDate))
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+  const userIds = teamMembers.map(m => m._id);
+  const userLegend = buildUserColorLegend(teamMembers);
   const taskColor = (task: any) => {
     if (task.status === 'Completed') return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200';
     if (new Date(task.endAt) < new Date()) return 'border-rose-500/25 bg-rose-500/10 text-rose-200';
-    if (task.type === 'Demo') return 'border-purple-500/25 bg-purple-500/10 text-purple-200';
-    if (task.type === 'Call') return 'border-blue-500/25 bg-blue-500/10 text-blue-200';
-    return 'border-indigo-500/20 bg-indigo-500/5 text-slate-200';
+    const color = getUserColor(task.creatorId, userIds);
+    return `${color.className}`;
   };
 
   const respondToTask = (status: string) => {
@@ -163,6 +164,18 @@ function CalendarComponent() {
         )}
       </div>
 
+      {selectedUserFilter === 'All' && userLegend.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] text-slate-500 font-bold uppercase">สีตามผู้รับผิดชอบ:</span>
+          {userLegend.map(item => (
+            <span key={item.userId} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-300">
+              <span className={`w-2 h-2 rounded-full ${item.color.dot}`} />
+              {item.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* CALENDAR NAVIGATION */}
       <div className="p-4 rounded-xl border border-slate-800 bg-[#121826]/40 flex justify-between items-center">
         <h3 className="text-sm font-semibold text-slate-200">
@@ -194,7 +207,7 @@ function CalendarComponent() {
       {viewMode === 'week' && (
         <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
           {weekDays.map(day => {
-            const items = filteredTasks.filter(task => new Date(task.startAt).toDateString() === day.toDateString());
+            const items = filteredTasks.filter(task => isSameLocalDay(task.startAt, day));
             return (
               <div key={day.toISOString()} className="rounded-2xl border border-slate-800 bg-[#121826]/30 p-3 min-h-[260px]">
                 <div className="text-[10px] font-black text-slate-400 mb-3">{day.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' })}</div>
@@ -245,7 +258,7 @@ function CalendarComponent() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {days.map((day, dIdx) => {
           const dayTasks = getTasksForDay(day);
-          const isToday = new Date().toISOString().split('T')[0] === day.toISOString().split('T')[0];
+          const isToday = isTodayLocal(day);
 
           return (
             <div 

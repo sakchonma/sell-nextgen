@@ -1,0 +1,245 @@
+import { Leads, Tasks, MemoryStore, MemoryCollection } from '../models/db.js';
+import type { Lead, Task } from '../types/index.js';
+
+type SourceRef = { type: string; leadId?: string; noteKey?: string };
+
+async function findAll<T>(collection: any, query: Record<string, unknown> = {}): Promise<T[]> {
+  if (collection?.find && typeof collection.find().toArray === 'function') {
+    return collection.find(query).toArray();
+  }
+  return collection.find(query);
+}
+
+function leadNoteKey(note: { createdAt: Date | string; author: string }) {
+  return `${new Date(note.createdAt).toISOString()}|${note.author}`;
+}
+
+function formatDateOnly(value: Date | string) {
+  const date = new Date(value);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function dateOnlyRange(dateStr: string) {
+  const start = new Date(`${dateStr}T09:00:00`);
+  const end = new Date(`${dateStr}T10:00:00`);
+  return { start, end };
+}
+
+function calculateReminderAt(startAt: Date, minutesBefore = 30) {
+  return new Date(startAt.getTime() - minutesBefore * 60 * 1000);
+}
+
+function noteTypeToTaskType(noteType: string): Task['type'] {
+  if (noteType === 'Call') return 'Call';
+  if (noteType === 'Meeting') return 'Meeting';
+  if (noteType === 'FollowUp') return 'FollowUp';
+  return 'Other';
+}
+
+async function upsertTask(task: Record<string, unknown>) {
+  const coll = Tasks();
+  const existing = await coll.findOne({ _id: task._id } as any);
+  if (existing) {
+    await (coll as any).updateOne({ _id: task._id }, { $set: task });
+  } else {
+    await coll.insertOne(task as any);
+  }
+}
+
+async function deleteTaskById(taskId: string) {
+  const coll = Tasks();
+  if ('deleteOne' in coll) {
+    await (coll as any).deleteOne({ _id: taskId });
+  } else {
+    const idx = (MemoryStore as any).tasks?.findIndex((t: any) => t._id === taskId);
+    if (idx !== -1) (MemoryStore as any).tasks.splice(idx, 1);
+  }
+}
+
+async function findLinkedTask(leadId: string, sourceType: string, noteKey?: string) {
+  const tasks = await findAll<any>(Tasks(), { leadId });
+  return tasks.find((task: any) => {
+    const ref = task.sourceRef as SourceRef | undefined;
+    if (!ref || ref.leadId !== leadId || ref.type !== sourceType) return false;
+    if (noteKey !== undefined) return ref.noteKey === noteKey;
+    return true;
+  });
+}
+
+async function updateLeadRecord(leadId: string, patch: Partial<Lead>) {
+  const coll = Leads();
+  const lead = await coll.findOne({ _id: leadId } as any);
+  if (!lead) return;
+  const updated = { ...lead, ...patch, updatedAt: new Date() };
+  if ('updateOne' in coll && !(coll instanceof MemoryCollection)) {
+    await (coll as any).updateOne({ _id: leadId }, { $set: updated });
+  } else {
+    const idx = (MemoryStore as any).leads.findIndex((item: any) => item._id === leadId);
+    if (idx !== -1) (MemoryStore as any).leads[idx] = updated;
+  }
+}
+
+export async function syncLeadNextCallAt(lead: Lead, creatorId: string) {
+  const linked = await findLinkedTask(lead._id, 'lead_next_call');
+  const nextCallAt = lead.nextCallAt?.trim();
+
+  if (!nextCallAt) {
+    if (linked) await deleteTaskById(linked._id);
+    return;
+  }
+
+  const { start, end } = dateOnlyRange(nextCallAt);
+  const ownerId = lead.assignedTo || creatorId;
+  const taskPayload = {
+    _id: linked?._id || `t_sync_${lead._id}_nextcall`,
+    title: `Follow-up: ${lead.schoolName}`,
+    description: `นัดโทรครั้งถัดไปจาก Lead`,
+    type: 'FollowUp' as const,
+    status: 'Pending' as const,
+    startAt: start,
+    endAt: end,
+    leadId: lead._id,
+    reminderAt: calculateReminderAt(start, 30),
+    reminderMinutesBefore: 30,
+    sourceRef: { type: 'lead_next_call', leadId: lead._id },
+    creatorId: linked?.creatorId || ownerId,
+    participants: linked?.participants || [{ userId: ownerId, status: 'Accepted' }],
+    comments: linked?.comments || [],
+    createdAt: linked?.createdAt || new Date(),
+    updatedAt: new Date(),
+  };
+  await upsertTask(taskPayload);
+}
+
+export async function syncLeadNotesAdded(lead: Lead, newNotes: any[], creatorId: string) {
+  for (const note of newNotes) {
+    const type = note.type || 'General';
+    if (!['Call', 'Meeting', 'FollowUp', 'Email'].includes(type)) continue;
+    const key = leadNoteKey(note);
+    const existing = await findLinkedTask(lead._id, 'lead_note', key);
+    const start = new Date(note.createdAt || Date.now());
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const ownerId = lead.assignedTo || creatorId;
+    const taskType = noteTypeToTaskType(type);
+    const titlePrefix = type === 'Email' ? 'อีเมล' : type;
+    await upsertTask({
+      _id: existing?._id || `t_sync_${lead._id}_note_${Date.now()}`,
+      title: `${titlePrefix}: ${lead.schoolName}`,
+      description: note.content,
+      type: taskType,
+      status: 'Pending',
+      startAt: start,
+      endAt: end,
+      leadId: lead._id,
+      reminderAt: calculateReminderAt(start, 30),
+      reminderMinutesBefore: 30,
+      sourceRef: { type: 'lead_note', leadId: lead._id, noteKey: key },
+      creatorId: existing?.creatorId || ownerId,
+      participants: existing?.participants || [{ userId: ownerId, status: 'Accepted' }],
+      comments: existing?.comments || [],
+      createdAt: existing?.createdAt || new Date(),
+      updatedAt: new Date(),
+    });
+  }
+}
+
+export async function syncTaskToLead(task: any) {
+  if (!task.leadId) return;
+  const ref = task.sourceRef as SourceRef | undefined;
+  if (task.type === 'FollowUp' || ref?.type === 'lead_next_call') {
+    const nextCallAt = formatDateOnly(task.startAt);
+    await updateLeadRecord(task.leadId, { nextCallAt });
+  }
+}
+
+export async function syncTaskCompletedToLead(task: any) {
+  if (!task.leadId) return;
+  const today = formatDateOnly(new Date());
+  const patch: Partial<Lead> = { lastContactedAt: today };
+  const ref = task.sourceRef as SourceRef | undefined;
+  if (task.type === 'FollowUp' || ref?.type === 'lead_next_call') {
+    patch.nextCallAt = '';
+  }
+  await updateLeadRecord(task.leadId, patch);
+}
+
+export async function syncLeadAfterUpdate(
+  previousLead: Lead,
+  updatedLead: Lead,
+  creatorId: string,
+  appendedNotes?: any[]
+) {
+  if (previousLead.nextCallAt !== updatedLead.nextCallAt) {
+    await syncLeadNextCallAt(updatedLead, creatorId);
+  }
+  if (appendedNotes?.length) {
+    await syncLeadNotesAdded(updatedLead, appendedNotes, creatorId);
+  }
+}
+
+export async function syncTaskAfterUpdate(previousTask: any, updatedTask: any) {
+  const startChanged = new Date(previousTask.startAt).getTime() !== new Date(updatedTask.startAt).getTime();
+  const typeChanged = previousTask.type !== updatedTask.type;
+  if (startChanged || typeChanged) {
+    await syncTaskToLead(updatedTask);
+  }
+}
+
+export async function logActivity(params: {
+  leadId: string;
+  type: 'Call' | 'Email' | 'Meeting' | 'FollowUp';
+  content: string;
+  startAt: string;
+  endAt?: string;
+  reminderMinutesBefore?: number;
+  creatorId: string;
+  authorName: string;
+}) {
+  const coll = Leads();
+  const lead = await coll.findOne({ _id: params.leadId } as any) as Lead | null;
+  if (!lead) throw new Error('ไม่พบข้อมูลโรงเรียน');
+
+  const start = new Date(params.startAt);
+  const end = params.endAt ? new Date(params.endAt) : new Date(start.getTime() + 60 * 60 * 1000);
+  const reminderMinutes = params.reminderMinutesBefore ?? 30;
+  const note = {
+    author: params.authorName,
+    content: params.content,
+    type: params.type === 'Email' ? 'Email' : params.type,
+    createdAt: new Date(),
+  };
+  const notes = [...(lead.notes || []), note];
+  await updateLeadRecord(params.leadId, { notes } as Partial<Lead>);
+
+  const ownerId = lead.assignedTo || params.creatorId;
+  const taskType = params.type === 'Email' ? 'Other' : params.type;
+  const taskId = `t_log_${Date.now()}`;
+  await upsertTask({
+    _id: taskId,
+    title: `${params.type}: ${lead.schoolName}`,
+    description: params.content,
+    type: taskType,
+    status: 'Pending',
+    startAt: start,
+    endAt: end,
+    leadId: params.leadId,
+    reminderAt: calculateReminderAt(start, reminderMinutes),
+    reminderMinutesBefore: reminderMinutes,
+    sourceRef: { type: 'activity_log', leadId: params.leadId, noteKey: leadNoteKey(note) },
+    creatorId: params.creatorId,
+    participants: [{ userId: ownerId, status: 'Accepted' }, ...(ownerId !== params.creatorId ? [{ userId: params.creatorId, status: 'Accepted' }] : [])],
+    comments: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  if (params.type === 'FollowUp' || params.type === 'Call') {
+    await updateLeadRecord(params.leadId, { nextCallAt: formatDateOnly(start) });
+  }
+
+  return { taskId, note };
+}

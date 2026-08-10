@@ -88,7 +88,7 @@ export interface Lead {
   notes: Array<{
     author: string;
     content: string;
-    type?: 'General' | 'Call' | 'Meeting' | 'Coaching' | 'FollowUp';
+    type?: 'General' | 'Call' | 'Meeting' | 'Coaching' | 'FollowUp' | 'Email';
     createdAt: Date;
   }>;
   attachments?: Array<{
@@ -136,6 +136,9 @@ export interface Task {
   opportunityId?: string;
   requestId?: string;
   reminderAt?: Date;
+  reminderMinutesBefore?: number;
+  reminderSentAt?: Date;
+  sourceRef?: { type: string; leadId?: string; noteKey?: string };
   recurrenceId?: string;
   recurrenceRule?: 'none' | 'daily' | 'weekly' | 'monthly';
   creatorId: string;

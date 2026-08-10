@@ -19,6 +19,13 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch, apiJson } from '../lib/api';
 
+const LEAD_STATUS_OPTIONS = ['Cold', 'Warm', 'Hot', 'Customer'];
+const LEAD_STAGE_OPTIONS = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'];
+
+function noteKey(note: { createdAt: string | Date; author: string }) {
+  return `${new Date(note.createdAt).toISOString()}|${note.author}`;
+}
+
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/leads/$leadId',
@@ -44,7 +51,12 @@ function LeadDetailComponent() {
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [loadingAI, setLoadingAI] = useState(false);
-  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContactEmail, setNewContactEmail] = useState('');
+  const [editingContactIndex, setEditingContactIndex] = useState<number | null>(null);
+  const [editContactForm, setEditContactForm] = useState({ name: '', position: '', phone: '', email: '' });
+  const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null);
+  const [editNoteContent, setEditNoteContent] = useState('');
+  const [editNoteType, setEditNoteType] = useState('General');
   const [coachNote, setCoachNote] = useState('');
   const [editProfile, setEditProfile] = useState({
     schoolName: '',
@@ -60,8 +72,14 @@ function LeadDetailComponent() {
     nextCallAt: '',
     documentStatus: '',
     remarks: '',
-    legacySaleName: ''
+    legacySaleName: '',
+    status: 'Cold',
+    stage: 'New Lead',
+    score: '',
+    source: '',
+    campaign: ''
   });
+  const [showAddContact, setShowAddContact] = useState(false);
 
   const fetchLeadDetail = () => {
     apiFetch(`/api/leads/${leadId}`)
@@ -82,7 +100,12 @@ function LeadDetailComponent() {
           nextCallAt: data.nextCallAt || '',
           documentStatus: data.documentStatus || '',
           remarks: data.remarks || '',
-          legacySaleName: data.legacySaleName || ''
+          legacySaleName: data.legacySaleName || '',
+          status: data.status || 'Cold',
+          stage: data.stage || 'New Lead',
+          score: data.score !== undefined && data.score !== null ? String(data.score) : '',
+          source: data.source || '',
+          campaign: data.campaign || ''
         });
       })
       .catch(err => console.error('Failed to load lead details:', err));
@@ -104,7 +127,12 @@ function LeadDetailComponent() {
     e.preventDefault();
     if (!lead) return;
 
-    const newContact = { name: newContactName, position: newContactPosition, phone: newContactPhone };
+    const newContact = {
+      name: newContactName,
+      position: newContactPosition,
+      phone: newContactPhone,
+      email: newContactEmail.trim() || undefined
+    };
     const updatedContacts = [...(lead.contacts || []), newContact];
 
     apiJson(`/api/leads/${leadId}`, { contacts: updatedContacts }, { method: 'PUT' })
@@ -113,6 +141,7 @@ function LeadDetailComponent() {
         setNewContactName('');
         setNewContactPosition('');
         setNewContactPhone('');
+        setNewContactEmail('');
         fetchLeadDetail();
       })
       .catch(err => console.error('Failed to add contact:', err));
@@ -143,7 +172,8 @@ function LeadDetailComponent() {
     const payload = {
       ...editProfile,
       studentCount: editProfile.studentCount ? Number(editProfile.studentCount) : undefined,
-      upperElementaryStudentCount: editProfile.upperElementaryStudentCount ? Number(editProfile.upperElementaryStudentCount) : undefined
+      upperElementaryStudentCount: editProfile.upperElementaryStudentCount ? Number(editProfile.upperElementaryStudentCount) : undefined,
+      score: editProfile.score ? Number(editProfile.score) : undefined
     };
     apiJson(`/api/leads/${leadId}`, payload, { method: 'PUT' })
       .then(data => {
@@ -198,6 +228,89 @@ function LeadDetailComponent() {
     if (status === 'Cold') return 'text-blue-400 bg-blue-500/10 border-blue-500/25';
     return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
   };
+  const saveContacts = (contacts: any[]) => {
+    return apiJson(`/api/leads/${leadId}`, { contacts }, { method: 'PUT' })
+      .then(data => {
+        setLead(data);
+        fetchActivity();
+      });
+  };
+
+  const startEditContact = (index: number) => {
+    const contact = lead.contacts[index];
+    setEditingContactIndex(index);
+    setEditContactForm({
+      name: contact.name || '',
+      position: contact.position || '',
+      phone: contact.phone || '',
+      email: contact.email || ''
+    });
+  };
+
+  const handleSaveContactEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingContactIndex === null) return;
+    const contacts = [...(lead.contacts || [])];
+    contacts[editingContactIndex] = {
+      ...contacts[editingContactIndex],
+      name: editContactForm.name,
+      position: editContactForm.position,
+      phone: editContactForm.phone,
+      email: editContactForm.email.trim() || undefined
+    };
+    saveContacts(contacts)
+      .then(() => setEditingContactIndex(null))
+      .catch(err => console.error('Failed to update contact:', err));
+  };
+
+  const handleDeleteContact = (index: number) => {
+    if (!window.confirm('ลบผู้ติดต่อนี้?')) return;
+    const contacts = (lead.contacts || []).filter((_: any, i: number) => i !== index);
+    saveContacts(contacts).catch(err => console.error('Failed to delete contact:', err));
+  };
+
+  const handleDeleteAttachment = (index: number) => {
+    if (!window.confirm('ลบไฟล์แนบนี้?')) return;
+    const attachments = (lead.attachments || []).filter((_: any, i: number) => i !== index);
+    apiJson(`/api/leads/${leadId}`, { attachments }, { method: 'PUT' })
+      .then(data => {
+        setLead(data);
+        fetchActivity();
+      })
+      .catch(err => console.error('Failed to delete attachment:', err));
+  };
+
+  const startEditNote = (note: any) => {
+    setEditingNoteKey(noteKey(note));
+    setEditNoteContent(note.content);
+    setEditNoteType(note.type || 'General');
+  };
+
+  const handleSaveNoteEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNoteKey) return;
+    apiJson(`/api/leads/${leadId}/notes/${encodeURIComponent(editingNoteKey)}`, {
+      content: editNoteContent,
+      type: editNoteType
+    }, { method: 'PATCH' })
+      .then(data => {
+        setLead(data);
+        setEditingNoteKey(null);
+        fetchActivity();
+      })
+      .catch(err => console.error('Failed to update note:', err));
+  };
+
+  const handleDeleteNote = (note: any) => {
+    if (!window.confirm('ลบบันทึกนี้?')) return;
+    apiJson(`/api/leads/${leadId}/notes/${encodeURIComponent(noteKey(note))}`, {}, { method: 'DELETE' })
+      .then(data => {
+        setLead(data);
+        fetchActivity();
+      })
+      .catch(err => console.error('Failed to delete note:', err));
+  };
+
   const userName = (userId?: string) => users.find(item => item._id === userId)?.name || 'ไม่ระบุ';
   const handleTransferOwner = (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,9 +466,12 @@ function LeadDetailComponent() {
                 <Paperclip size={13} /> Attachments
               </h3>
               {(lead.attachments || []).map((item: any, idx: number) => (
-                <a key={idx} href={item.url} target="_blank" rel="noreferrer" className="block p-2 rounded-lg border border-slate-800 text-[10px] text-indigo-300 hover:bg-slate-800/50">
-                  {item.name}
-                </a>
+                <div key={idx} className="flex items-center gap-2">
+                  <a href={item.url} target="_blank" rel="noreferrer" className="flex-1 p-2 rounded-lg border border-slate-800 text-[10px] text-indigo-300 hover:bg-slate-800/50">
+                    {item.name}
+                  </a>
+                  <button type="button" onClick={() => handleDeleteAttachment(idx)} className="px-2 py-1 rounded border border-rose-500/25 text-[9px] text-rose-300">ลบ</button>
+                </div>
               ))}
               {!(lead.attachments || []).length && <div className="text-[10px] text-slate-500">ยังไม่มีไฟล์แนบ</div>}
               <form onSubmit={handleAddAttachment} className="pt-2 space-y-2">
@@ -391,6 +507,13 @@ function LeadDetailComponent() {
                   className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200 focus:outline-none"
                   required
                 />
+                <input 
+                  type="email"
+                  placeholder="อีเมล (ถ้ามี)"
+                  value={newContactEmail}
+                  onChange={(e) => setNewContactEmail(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200 focus:outline-none"
+                />
                 <div className="flex justify-end gap-2 pt-1">
                   <button 
                     type="button" 
@@ -412,12 +535,33 @@ function LeadDetailComponent() {
             <div className="space-y-3">
               {lead.contacts && lead.contacts.map((contact: any, index: number) => (
                 <div key={index} className="p-3.5 rounded-xl border border-slate-800 bg-[#090d16]/30 space-y-1.5">
-                  <span className="block font-semibold text-xs text-slate-200">{contact.name}</span>
-                  <span className="block text-[10px] text-slate-400">{contact.position}</span>
-                  <div className="flex items-center gap-4 text-[10.5px] text-slate-500 pt-1">
-                    <span className="flex items-center gap-0.5"><Phone size={10} /> {contact.phone}</span>
-                    {contact.email && <span className="flex items-center gap-0.5"><Mail size={10} /> {contact.email}</span>}
-                  </div>
+                  {editingContactIndex === index ? (
+                    <form onSubmit={handleSaveContactEdit} className="space-y-2">
+                      <input value={editContactForm.name} onChange={e => setEditContactForm({ ...editContactForm, name: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" required />
+                      <input value={editContactForm.position} onChange={e => setEditContactForm({ ...editContactForm, position: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
+                      <input value={editContactForm.phone} onChange={e => setEditContactForm({ ...editContactForm, phone: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" required />
+                      <input type="email" value={editContactForm.email} onChange={e => setEditContactForm({ ...editContactForm, email: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
+                      <div className="flex gap-2 justify-end">
+                        <button type="button" onClick={() => setEditingContactIndex(null)} className="px-2 py-1 text-[10px] text-slate-400">ยกเลิก</button>
+                        <button type="submit" className="px-2 py-1 bg-indigo-600 rounded text-[10px] text-white">บันทึก</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="block font-semibold text-xs text-slate-200">{contact.name}</span>
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => startEditContact(index)} className="px-2 py-0.5 rounded border border-slate-700 text-[9px] text-slate-400">แก้ไข</button>
+                          <button type="button" onClick={() => handleDeleteContact(index)} className="px-2 py-0.5 rounded border border-rose-500/25 text-[9px] text-rose-300">ลบ</button>
+                        </div>
+                      </div>
+                      <span className="block text-[10px] text-slate-400">{contact.position}</span>
+                      <div className="flex items-center gap-4 text-[10.5px] text-slate-500 pt-1">
+                        <span className="flex items-center gap-0.5"><Phone size={10} /> {contact.phone}</span>
+                        {contact.email && <span className="flex items-center gap-0.5"><Mail size={10} /> {contact.email}</span>}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {(!lead.contacts || lead.contacts.length === 0) && (
@@ -435,6 +579,30 @@ function LeadDetailComponent() {
               </div>
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    สถานะ (Status)
+                    <select value={editProfile.status} onChange={e => handleEditProfileChange('status', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                      {LEAD_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Stage
+                    <select value={editProfile.stage} onChange={e => handleEditProfileChange('stage', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                      {LEAD_STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Score (0-100)
+                    <input type="number" min="0" max="100" value={editProfile.score} onChange={e => handleEditProfileChange('score', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Source
+                    <input value={editProfile.source} onChange={e => handleEditProfileChange('source', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block md:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    Campaign
+                    <input value={editProfile.campaign} onChange={e => handleEditProfileChange('campaign', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     ชื่อโรงเรียน
                     <input value={editProfile.schoolName} onChange={e => handleEditProfileChange('schoolName', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" required />
@@ -516,6 +684,7 @@ function LeadDetailComponent() {
                   <option value="Call">Call</option>
                   <option value="Meeting">Meeting</option>
                   <option value="FollowUp">FollowUp</option>
+                  <option value="Email">Email</option>
                   <option value="Coaching">Coaching</option>
                 </select>
                 <textarea
@@ -543,13 +712,37 @@ function LeadDetailComponent() {
               <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
                 {lead.notes && lead.notes.slice().reverse().map((note: any, idx: number) => (
                   <div key={idx} className="p-3.5 rounded-xl border border-slate-800/80 bg-[#121826]/10 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10.5px] font-semibold text-indigo-400 flex items-center gap-1">
-                        <User size={10} /> {note.author} · {note.type || 'General'}
-                      </span>
-                      <span className="text-[9px] text-slate-500">{new Date(note.createdAt).toLocaleString('th-TH')}</span>
-                    </div>
-                    <p className="text-xs text-slate-300 leading-relaxed">{note.content}</p>
+                    {editingNoteKey === noteKey(note) ? (
+                      <form onSubmit={handleSaveNoteEdit} className="space-y-2">
+                        <select value={editNoteType} onChange={e => setEditNoteType(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                          <option value="General">General</option>
+                          <option value="Call">Call</option>
+                          <option value="Meeting">Meeting</option>
+                          <option value="FollowUp">FollowUp</option>
+                          <option value="Email">Email</option>
+                          <option value="Coaching">Coaching</option>
+                        </select>
+                        <textarea value={editNoteContent} onChange={e => setEditNoteContent(e.target.value)} rows={3} className="w-full p-3 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" required />
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={() => setEditingNoteKey(null)} className="px-2 py-1 text-[10px] text-slate-400">ยกเลิก</button>
+                          <button type="submit" className="px-3 py-1 bg-indigo-600 rounded text-[10px] text-white">บันทึก</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-[10.5px] font-semibold text-indigo-400 flex items-center gap-1">
+                            <User size={10} /> {note.author} · {note.type || 'General'}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] text-slate-500">{new Date(note.createdAt).toLocaleString('th-TH')}</span>
+                            <button type="button" onClick={() => startEditNote(note)} className="px-2 py-0.5 rounded border border-slate-700 text-[9px] text-slate-400">แก้ไข</button>
+                            <button type="button" onClick={() => handleDeleteNote(note)} className="px-2 py-0.5 rounded border border-rose-500/25 text-[9px] text-rose-300">ลบ</button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed">{note.content}</p>
+                      </>
+                    )}
                   </div>
                 ))}
                 {(!lead.notes || lead.notes.length === 0) && (

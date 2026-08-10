@@ -21,6 +21,8 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { isSameLocalDay } from '../lib/datetime';
+import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -54,6 +56,7 @@ function TasksComponent() {
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [opportunityId, setOpportunityId] = useState('');
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState('30');
   
   // Reject Dialog State
   const [declineTask, setDeclineTask] = useState<any>(null);
@@ -91,6 +94,7 @@ function TasksComponent() {
     setShowLeadDropdown(false);
     setOpportunityId('');
     setInvitedIds([]);
+    setReminderMinutesBefore('30');
     setConflicts([]);
     setEditingTask(null);
   };
@@ -152,7 +156,7 @@ function TasksComponent() {
       endAt,
       leadId: leadId || undefined,
       opportunityId: opportunityId || undefined,
-      reminderMinutesBefore: 30,
+      reminderMinutesBefore: Number(reminderMinutesBefore) || 0,
       recurrenceRule: 'none',
       recurrenceCount: 1,
       participantIds: [...invitedIds, user?._id].filter(Boolean)
@@ -261,13 +265,16 @@ function TasksComponent() {
     day.setDate(weekStart.getDate() + idx);
     return day;
   });
-  const dayTasks = filteredSchedule.filter(t => new Date(t.startAt).toDateString() === now.toDateString());
+  const dayTasks = filteredSchedule.filter(t => isSameLocalDay(t.startAt, now));
+  const allUserIds = [user?._id, ...coworkers.map((c: any) => c._id)].filter(Boolean) as string[];
+  const userLegend = buildUserColorLegend(
+    [{ _id: user?._id || '', name: user?.name || 'ฉัน' }, ...coworkers.map((c: any) => ({ _id: c._id, name: c.name }))]
+      .filter(u => u._id)
+  );
   const typeColor = (task: any) => {
     if (task.status === 'Completed') return 'border-emerald-500/25 bg-emerald-500/10';
     if (new Date(task.endAt) < now) return 'border-rose-500/25 bg-rose-500/10';
-    if (task.type === 'Demo') return 'border-purple-500/25 bg-purple-500/10';
-    if (task.type === 'Call') return 'border-blue-500/25 bg-blue-500/10';
-    return 'border-indigo-500/20 bg-indigo-500/5';
+    return getUserColor(task.creatorId, allUserIds).className;
   };
 
   return (
@@ -287,6 +294,18 @@ function TasksComponent() {
           <Plus size={14} /> สร้างนัดหมายใหม่
         </button>
       </div>
+
+      {userLegend.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] text-slate-500 font-bold uppercase">สีตามผู้รับผิดชอบ:</span>
+          {userLegend.map(item => (
+            <span key={item.userId} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-300">
+              <span className={`w-2 h-2 rounded-full ${item.color.dot}`} />
+              {item.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
@@ -360,7 +379,7 @@ function TasksComponent() {
           {viewMode === 'week' && (
             <div className="grid grid-cols-1 md:grid-cols-7 gap-3 py-1">
               {weekDays.map(day => {
-                const items = filteredSchedule.filter(t => new Date(t.startAt).toDateString() === day.toDateString());
+                const items = filteredSchedule.filter(t => isSameLocalDay(t.startAt, day));
                 return (
                   <div key={day.toISOString()} className="rounded-xl border border-slate-800 bg-[#090d16]/30 p-3 min-h-40">
                     <div className="text-[10px] font-black text-slate-400 mb-2">{day.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' })}</div>
@@ -563,6 +582,17 @@ function TasksComponent() {
               <select value={opportunityId} onChange={e => setOpportunityId(e.target.value)} className="px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 self-end">
                 <option value="">ไม่ผูก Opportunity</option>
                 {opportunities.map(opp => <option key={opp._id} value={opp._id}>{opp.title}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 font-semibold mb-1">แจ้งเตือนล่วงหน้า (Reminder)</label>
+              <select value={reminderMinutesBefore} onChange={e => setReminderMinutesBefore(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                <option value="0">ไม่เตือน</option>
+                <option value="15">15 นาที</option>
+                <option value="30">30 นาที</option>
+                <option value="60">1 ชั่วโมง</option>
+                <option value="1440">1 วัน</option>
               </select>
             </div>
 

@@ -2,6 +2,8 @@ import { createRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
+import { dateKey } from '../lib/datetime';
+import { getUserColor } from '../lib/user-colors';
 import {
   CalendarDays,
   CheckCircle2,
@@ -77,15 +79,6 @@ function authHeaders(contentType = false) {
   };
   if (contentType) headers['Content-Type'] = 'application/json';
   return headers;
-}
-
-function dateKey(value: string | Date) {
-  const date = value instanceof Date ? value : new Date(value);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
 }
 
 function timeValue(value: string) {
@@ -205,6 +198,13 @@ function AdminCalendarComponent() {
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [events]);
+
+  const ownerColorIds = owners.map(o => o.id);
+  const eventUserColor = (event: AdminCalendarEvent) => {
+    const userId = event.ownerId || '';
+    if (!userId) return 'border-slate-700 bg-slate-900/40';
+    return getUserColor(userId, ownerColorIds).className;
+  };
 
   const monthStats = useMemo(() => {
     const requestCount = filteredEvents.filter(event => event.source === 'request').length;
@@ -392,6 +392,21 @@ function AdminCalendarComponent() {
 
       {error && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{error}</div>}
 
+      {owners.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] text-slate-500 font-bold uppercase">สีตามผู้รับผิดชอบ:</span>
+          {owners.map(owner => {
+            const color = getUserColor(owner.id, ownerColorIds);
+            return (
+              <span key={owner.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-800 text-[10px] text-slate-300">
+                <span className={`w-2 h-2 rounded-full ${color.dot}`} />
+                {owner.name}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Events', value: monthStats.total, icon: CalendarDays },
@@ -490,7 +505,7 @@ function AdminCalendarComponent() {
                     onClick={() => openEdit(event)}
                     draggable={permissions?.canEdit}
                     onDragStart={e => e.dataTransfer.setData('text/plain', `${event.source}-${event.id}`)}
-                    className="w-full text-left rounded-lg border border-slate-800 bg-slate-950/40 p-2 transition-all hover:border-slate-700 disabled:cursor-default disabled:hover:border-slate-800"
+                    className={`w-full text-left rounded-lg border p-2 transition-all hover:border-slate-700 disabled:cursor-default disabled:hover:border-slate-800 ${eventUserColor(event)}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${sourceStyle(event.source)}`}>

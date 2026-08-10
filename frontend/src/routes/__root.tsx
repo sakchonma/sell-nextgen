@@ -21,6 +21,7 @@ import {
   DollarSign,
   Bell,
   CheckCircle2,
+  Activity,
   Users2,
   EyeOff,
   SlidersHorizontal,
@@ -262,6 +263,15 @@ function RootComponent() {
       >
         <CheckCircle2 size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>งาน & นัดหมาย</span>
+      </Link>
+
+      <Link
+        to="/activities"
+        onClick={onNavigate}
+        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+      >
+        <Activity size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>กิจกรรม & ติดตามงาน</span>
       </Link>
 
       <Link
