@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import PDFDocument from 'pdfkit';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { Leads, Quotations } from '../models/db.js';
 
 const router = Router();
@@ -17,7 +17,7 @@ function buildPdf(lines: string[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 48, size: 'A4' });
     const chunks: Buffer[] = [];
-    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
