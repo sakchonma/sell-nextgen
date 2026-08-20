@@ -377,7 +377,7 @@ const createRequestBodySchema = z.object({
   message: 'วันและเวลาสิ้นสุดต้องมากกว่าวันและเวลาเริ่มต้น'
 });
 
-const opportunityStageSchema = z.enum(['Qualified', 'Proposal', 'Demo', 'Negotiation', 'Won', 'Lost']);
+const opportunityStageSchema = z.enum(['Qualified', 'Presentation', 'Demo', 'Proposal', 'Negotiation', 'Won', 'Lost']);
 const createOpportunityBodySchema = z.object({
   leadId: idSchema,
   title: nonEmptyTextSchema,
@@ -411,13 +411,14 @@ const opportunityStageBodySchema = z.object({
   message: 'ต้องระบุเหตุผลเมื่อเปลี่ยนเป็น Lost'
 });
 
-const taskTypeSchema = z.enum(['Call', 'Meeting', 'Demo', 'FollowUp', 'Other']);
+const taskTypeSchema = z.enum(['Call', 'Meeting', 'Presentation', 'Demo', 'FollowUp', 'Other']);
 const taskStatusSchema = z.enum(['Pending', 'Completed', 'Overdue']);
 const recurrenceRuleSchema = z.enum(['none', 'daily', 'weekly', 'monthly']);
 const createTaskBodySchema = z.object({
   title: nonEmptyTextSchema,
   description: optionalTextSchema,
   type: taskTypeSchema.default('Meeting'),
+  typeLabel: optionalTextSchema,
   startAt: dateStringSchema,
   endAt: dateStringSchema,
   leadId: idSchema.optional(),
@@ -436,6 +437,7 @@ const updateTaskBodySchema = z.object({
   title: nonEmptyTextSchema.optional(),
   description: optionalTextSchema,
   type: taskTypeSchema.optional(),
+  typeLabel: optionalTextSchema,
   startAt: dateStringSchema.optional(),
   endAt: dateStringSchema.optional(),
   status: taskStatusSchema.optional(),
@@ -858,7 +860,7 @@ async function notifyManagers(title: string, message: string, type: 'RequestAppr
   );
 }
 
-const AI_TASK_TYPES: ConversationalTaskType[] = ['Call', 'Meeting', 'Demo', 'FollowUp', 'Other'];
+const AI_TASK_TYPES: ConversationalTaskType[] = ['Call', 'Meeting', 'Presentation', 'Demo', 'FollowUp', 'Other'];
 const AI_URGENCY_LEVELS: UrgencyLevel[] = ['Low', 'Medium', 'High'];
 
 function normalizeForLeadMatch(value?: string): string {
@@ -1741,7 +1743,33 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       approvedValue: approvedQuotes.reduce((sum: number, quote: any) => sum + Number(quote.totalAmount || 0), 0),
       averageApprovalHours: approvedQuotes.length
         ? approvedQuotes.reduce((sum: number, quote: any) => sum + Math.max(0, asDate(quote.updatedAt).getTime() - asDate(quote.createdAt).getTime()) / 3600000, 0) / approvedQuotes.length
-        : 0
+        : 0,
+      quotesByStatus: {
+        approved: approvedQuotes.map((quote: any) => ({
+          id: quote._id,
+          quoteNumber: quote.quoteNumber,
+          leadId: quote.leadId,
+          totalAmount: quote.totalAmount,
+          status: quote.status,
+          createdAt: quote.createdAt
+        })),
+        pending: pendingQuotes.map((quote: any) => ({
+          id: quote._id,
+          quoteNumber: quote.quoteNumber,
+          leadId: quote.leadId,
+          totalAmount: quote.totalAmount,
+          status: quote.status,
+          createdAt: quote.createdAt
+        })),
+        rejected: rejectedQuotes.map((quote: any) => ({
+          id: quote._id,
+          quoteNumber: quote.quoteNumber,
+          leadId: quote.leadId,
+          totalAmount: quote.totalAmount,
+          status: quote.status,
+          createdAt: quote.createdAt
+        }))
+      }
     },
     requestSla: {
       rows: requestSlaRows,
@@ -1751,7 +1779,17 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     taskReport: {
       completed: tasks.filter((task: any) => task.status === 'Completed').length,
       overdue: overdueTasks.length,
-      total: tasks.length
+      total: tasks.length,
+      overdueTasks: overdueTasks.map((task: any) => ({
+        id: task._id,
+        title: task.title,
+        type: task.type,
+        typeLabel: task.typeLabel,
+        leadId: task.leadId,
+        endAt: task.endAt,
+        creatorId: task.creatorId,
+        status: task.status
+      }))
     },
     salesForecast,
     salesPerformance
@@ -2631,8 +2669,9 @@ function userCanSeeOpportunity(user: any, opportunity: any) {
 
 function defaultProbabilityForStage(stage: string) {
   if (stage === 'Qualified') return 20;
-  if (stage === 'Proposal') return 40;
+  if (stage === 'Presentation') return 30;
   if (stage === 'Demo') return 55;
+  if (stage === 'Proposal') return 40;
   if (stage === 'Negotiation') return 75;
   if (stage === 'Won') return 100;
   if (stage === 'Lost') return 0;
@@ -3028,7 +3067,7 @@ app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTask
     return;
   }
 
-  const { title, description, type, startAt, endAt, leadId, opportunityId, requestId, participantIds, reminderMinutesBefore, recurrenceRule, recurrenceCount } = req.body;
+  const { title, description, type, typeLabel, startAt, endAt, leadId, opportunityId, requestId, participantIds, reminderMinutesBefore, recurrenceRule, recurrenceCount } = req.body;
   const taskStart = new Date(startAt);
   const taskEnd = new Date(endAt);
   const uniqueParticipantIds = Array.from(new Set([currentUser._id, ...(participantIds || [])]));
@@ -3048,6 +3087,7 @@ app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTask
       title,
       description,
       type: type || 'Meeting',
+      typeLabel: type === 'Other' ? typeLabel || undefined : undefined,
       status: 'Pending',
       startAt: recurringStart,
       endAt: recurringEnd,

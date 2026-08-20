@@ -1,0 +1,67 @@
+แจ้งแก้ไข CRM – 20 ส.ค. 69
+(ไม่ใช่ประเด็นใหญ่ – เป็นการแก้ไขให้ระบบใช้งานได้ Flow และง่ายขึ้นสำหรับ User)
+ต้องการช่อง Search เพื่อค้นหาการนัดหมาย เนื่องจากต้องเลื่อนหาลงไปเยอะกว่าจะพบ
+ปฏิทินกลางองค์กร กดที่กิจกรรมในปฏิทิน แต่ pop up ไม่เด้งมาตรง แต่ไปเด้งด้านบนของหน้า
+3. Admin Calendar ก็เช่นเดียวกัน กดที่กิจกรรมในปฏิทินแล้ว แต่ pop up ไม่เด้งมาที่หน้าตรงตรง แต่มันไปเด้งด้านบนของหน้า
+4. ปรับเมนู dropdown ขอให้เรียงตามนี้ มีตัวที่ต้องเพิ่ม และที่ต้องจัดลำดับใหม่
+Qualify
+Presentation
+Demo
+Proposal
+Negotiation
+Won
+Lost
+5. เกี่ยวกับรายการสินค้า และราคาสินค้า
+ควรทำราคา Clever Exercise เป็น Manual Input มากกว่าล็อก Fixed Price เพราะราคาขึ้นอยู่กับเงื่อนไขของแต่ละโรงเรียน จะทำให้ CRM รองรับการเปลี่ยนราคาในอนาคตโดยไม่ต้องแก้ระบบ
+สรุป Product & Pricing สำหรับส่ง Dev ทำ CRM
+1. Clever Exercise — Digital Exercise Platform
+Product
+Clever Math
+Clever English
+Clever Math + Clever English
+Pricing — ให้ผู้ใช้งานกรอกราคาเอง (Manual Input)
+Field ที่ควรมีใน CRM: Product → Subject/Package → ระยะเวลา → จำนวน User → ราคาต่อ User → ส่วนลด (ถ้ามี) → มูลค่ารวม
+Total Value = จำนวน User × ราคาต่อ User
+2. VR Science Lab — Software Subscription
+VR Science Lab มีเนื้อหา 18 Labs พร้อม LMS, Server/Cloud และ Support
+CRM: เลือก Standard / Promotion + จำนวน User และให้ระบบคำนวณ Total อัตโนมัติ
+3. VR Science Lab — Hardware Purchase
+4. VR Science Lab — Hardware Rental
+สัญญา 3 ปี
+Logic ที่ส่งให้ Dev ได้เลย
+Product Category
+Clever Exercise / VR Science Lab
+Clever Exercise
+Product → Package → Duration → No. of Users → Unit Price [Manual Input] → Discount → Total Value
+VR Science Lab
+Software Subscription → Standard/Promotion → No. of Users → Total
+Hardware → Purchase/Rental → Equipment → Quantity → Total
+สำคัญ: ราคา Clever Exercise ห้าม Hard Code ให้เป็นช่องกรอกตัวเลข เพราะราคาเสนอขายสามารถแตกต่างกันตามโรงเรียน ส่วน VR Science Lab ให้ใช้ราคาคงที่ตามตารางข้างต้น ในปัจจุบัน
+ในเชิงระบบ แนะนำให้ Dev ทำ Unit Price ของ VR เป็น editable by Admin แม้หน้า Sales จะ Default ราคาคงที่ เพราะถ้าบริษัทปรับ Price List ในอนาคตจะไม่ต้องแก้ Code ใหม่
+6. หน้าสร้างใบเสนอราคา : ต้องการให้เซิร์ชชื่อ รร. ได้ด้วย
+7.เวลาโหลดใบเสนอราคาออกมา ข้อความกลายเป็นแบบนี้
+8. ตรงจุดที่ดูกิจกรรมล่าสุด ในนี้มี 190 รายการ แต่แสดงผลไม่ครบ จะดูทั้ง 190 รายการได้อย่างไร
+ปรับให้เลื่อนดูได้ทั้งหมดโดยเรียงตามระยะเวลาล่าสุด และสามารถที่จะเซิร์ชได้ด้วย
+9. ในเมนู Dropdown เพิ่มเมนูตามรายการนี้ และกรณีที่เป็น other ให้มีช่องกรอกว่ากิจกรรมนั้นคืออะไร
+Call
+Meeting
+Presentation
+Demo
+Follow up
+Other
+10. QUOTE APPROVAL REPORT และ REQUEST SLA / TASK OVERDUE ให้คลิกเข้าไปดูได้เลยว่าแต่ละรายการมีอะไรบ้างตามหัวข้อ
+Package | หน่วยราคา | CRM
+1 วิชา / 1 ภาคเรียน | ____ บาท/คน/วิชา/ภาคเรียน | กรอกเอง
+1 วิชา / 1 ปี | ____ บาท/คน/วิชา/ปี | กรอกเอง
+2 วิชา / 1 ปี | ____ บาท/คน/2 วิชา/ปี | กรอกเอง
+รายการ | ราคา
+Software — Standard Price | 1,500 บาท/คน/ปี
+Software — Promotion Price | 750 บาท/คน/ปี
+รายการ | ราคาซื้อขาด
+VR Station — 2 Headsets | 119,000 บาท
+VR Station — 4 Headsets | 189,000 บาท
+Teacher Set | 99,000 บาท
+รายการ | ค่าเช่า
+VR Station — 2 Headsets | 45,900 บาท/ปี
+VR Station — 4 Headsets | 69,900 บาท/ปี
+Teacher Set | 36,900 บาท/ปี

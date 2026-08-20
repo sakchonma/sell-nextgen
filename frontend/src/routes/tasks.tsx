@@ -18,11 +18,13 @@ import {
   Grid3X3,
   Edit,
   Repeat2,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Search
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 import { isSameLocalDay } from '../lib/datetime';
 import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
+import { TASK_TYPES, formatTaskType } from '../lib/task-types';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -37,6 +39,7 @@ function TasksComponent() {
   const [leads, setLeads] = useState<any[]>([]);
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'overdue' | 'completed'>('all');
+  const [listSearch, setListSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'month' | 'week' | 'day'>('list');
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [editingTask, setEditingTask] = useState<any>(null);
@@ -49,6 +52,7 @@ function TasksComponent() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState('Meeting');
+  const [typeLabel, setTypeLabel] = useState('');
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
   const [leadId, setLeadId] = useState('');
@@ -87,6 +91,7 @@ function TasksComponent() {
     setTitle('');
     setDescription('');
     setType('Meeting');
+    setTypeLabel('');
     setStartAt('');
     setEndAt('');
     setLeadId('');
@@ -104,6 +109,7 @@ function TasksComponent() {
     setTitle(task.title || '');
     setDescription(task.description || '');
     setType(task.type || 'Meeting');
+    setTypeLabel(task.typeLabel || '');
     setStartAt(new Date(task.startAt).toISOString().slice(0, 16));
     setEndAt(new Date(task.endAt).toISOString().slice(0, 16));
     setLeadId(task.leadId || '');
@@ -152,6 +158,7 @@ function TasksComponent() {
       title,
       description,
       type,
+      typeLabel: type === 'Other' ? typeLabel.trim() || undefined : undefined,
       startAt,
       endAt,
       leadId: leadId || undefined,
@@ -246,12 +253,25 @@ function TasksComponent() {
     t.creatorId === user?._id ||
     t.participants.some(p => p.userId === user?._id && p.status === 'Accepted')
   );
+  const leadById = (id?: string) => leads.find(lead => lead._id === id);
   const now = new Date();
   const filteredSchedule = mySchedule.filter(t => {
     if (activeFilter === 'pending') return t.status === 'Pending';
     if (activeFilter === 'overdue') return t.status !== 'Completed' && new Date(t.endAt) < now;
     if (activeFilter === 'completed') return t.status === 'Completed';
     return true;
+  }).filter(t => {
+    const q = listSearch.trim().toLowerCase();
+    if (!q) return true;
+    const school = leadById(t.leadId)?.schoolName || '';
+    const dateStr = new Date(t.startAt).toLocaleString('th-TH');
+    const typeText = formatTaskType(t.type, t.typeLabel);
+    return (
+      String(t.title || '').toLowerCase().includes(q) ||
+      school.toLowerCase().includes(q) ||
+      typeText.toLowerCase().includes(q) ||
+      dateStr.toLowerCase().includes(q)
+    );
   });
   const monthBuckets = filteredSchedule.reduce<Record<string, any[]>>((acc, task) => {
     const key = new Date(task.startAt).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' });
@@ -306,6 +326,17 @@ function TasksComponent() {
           ))}
         </div>
       )}
+
+      <div className="relative max-w-md">
+        <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+        <input
+          type="search"
+          value={listSearch}
+          onChange={e => setListSearch(e.target.value)}
+          placeholder="ค้นหานัดหมาย ชื่อโรงเรียน ประเภท หรือวันที่..."
+          className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+        />
+      </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
@@ -502,15 +533,26 @@ function TasksComponent() {
                   onChange={(e) => setType(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="Call">Call</option>
-                  <option value="Meeting">Meeting (ประชุม)</option>
-                  <option value="Demo">Demo (สาธิตระบบ)</option>
-                  <option value="FollowUp">FollowUp (ติดตามงาน)</option>
-                  <option value="Other">Other</option>
+                  {TASK_TYPES.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
               </div>
 
-              <div></div>
+              {type === 'Other' && (
+                <div>
+                  <label className="block text-xs text-slate-400 font-semibold mb-1">ระบุประเภทกิจกรรม</label>
+                  <input
+                    type="text"
+                    value={typeLabel}
+                    onChange={(e) => setTypeLabel(e.target.value)}
+                    placeholder="เช่น Workshop, Training..."
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              <div className={type === 'Other' ? '' : 'hidden md:block'}></div>
 
               <div>
                 <label className="block text-xs text-slate-400 font-semibold mb-1">วันและเวลาเริ่มต้น</label>

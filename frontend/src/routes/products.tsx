@@ -19,6 +19,11 @@ const emptyProduct = {
   description: '',
   specialOffers: '',
   isActive: true,
+  productCategory: 'generic',
+  priceMode: 'fixed',
+  packages: [] as Array<{ id: string; label: string }>,
+  priceTiers: { standard: 0, promotion: 0 },
+  hardwareOptions: [] as Array<{ id: string; label: string; purchasePrice: number; rentalPricePerYear: number }>,
 };
 
 function authHeaders() {
@@ -336,9 +341,78 @@ function ProductsComponent() {
                 <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" required />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-1">ราคา</label>
-                <input type="number" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" required />
+                <label className="block text-xs text-slate-400 font-semibold mb-1">ประเภทสินค้า (Pricing)</label>
+                <select value={form.productCategory || 'generic'} onChange={e => setForm({ ...form, productCategory: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                  <option value="generic">ทั่วไป (Fixed Price)</option>
+                  <option value="clever_exercise">Clever Exercise (Manual)</option>
+                  <option value="vr_software">VR Software (Tiered)</option>
+                  <option value="vr_hardware_purchase">VR Hardware</option>
+                </select>
               </div>
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">โหมดราคา</label>
+                <select value={form.priceMode || 'fixed'} onChange={e => setForm({ ...form, priceMode: e.target.value })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                  <option value="fixed">Fixed</option>
+                  <option value="manual">Manual Input</option>
+                  <option value="tiered">Tiered (Standard/Promotion)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">ราคา (ฐาน/Default)</label>
+                <input type="number" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" />
+              </div>
+              {form.productCategory === 'vr_software' && (
+                <div className="md:col-span-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 font-semibold mb-1">Standard (บาท/คน/ปี)</label>
+                    <input type="number" min={0} value={form.priceTiers?.standard || 0} onChange={e => setForm({ ...form, priceTiers: { ...form.priceTiers, standard: Number(e.target.value) } })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 font-semibold mb-1">Promotion (บาท/คน/ปี)</label>
+                    <input type="number" min={0} value={form.priceTiers?.promotion || 0} onChange={e => setForm({ ...form, priceTiers: { ...form.priceTiers, promotion: Number(e.target.value) } })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </div>
+                </div>
+              )}
+              {form.productCategory === 'clever_exercise' && (
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-400 font-semibold mb-1">Packages (id|label ต่อบรรทัด)</label>
+                  <textarea
+                    rows={3}
+                    value={(form.packages || []).map((p: any) => `${p.id}|${p.label}`).join('\n')}
+                    onChange={e => setForm({
+                      ...form,
+                      packages: e.target.value.split('\n').filter(Boolean).map(row => {
+                        const [id, label] = row.split('|');
+                        return { id: (id || '').trim(), label: (label || id || '').trim() };
+                      })
+                    })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+                    placeholder="1sub_sem|1 วิชา / 1 ภาคเรียน"
+                  />
+                </div>
+              )}
+              {(form.productCategory === 'vr_hardware_purchase' || form.hardwareOptions?.length) && (
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-400 font-semibold mb-1">Hardware (id|label|ซื้อ|เช่า/ปี ต่อบรรทัด)</label>
+                  <textarea
+                    rows={4}
+                    value={(form.hardwareOptions || []).map((o: any) => `${o.id}|${o.label}|${o.purchasePrice}|${o.rentalPricePerYear}`).join('\n')}
+                    onChange={e => setForm({
+                      ...form,
+                      hardwareOptions: e.target.value.split('\n').filter(Boolean).map(row => {
+                        const [id, label, purchasePrice, rentalPricePerYear] = row.split('|');
+                        return {
+                          id: (id || '').trim(),
+                          label: (label || '').trim(),
+                          purchasePrice: Number(purchasePrice || 0),
+                          rentalPricePerYear: Number(rentalPricePerYear || 0),
+                        };
+                      })
+                    })}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+                  />
+                </div>
+              )}
               <div className="md:col-span-2">
                 <label className="block text-xs text-slate-400 font-semibold mb-1">คำอธิบาย</label>
                 <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" />

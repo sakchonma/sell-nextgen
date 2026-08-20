@@ -1,14 +1,17 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
-import { BarChart3, CalendarClock, Download, FileText, GitBranch, Printer, School, TrendingUp } from 'lucide-react';
+import { BarChart3, CalendarClock, Download, FileText, GitBranch, Printer, School, Search, TrendingUp } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { TASK_TYPES, formatTaskType } from '../lib/task-types';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/reports',
   component: ReportsComponent,
 });
+
+type ActivityTypeFilter = 'all' | 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
 
 function ReportsComponent() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -18,7 +21,9 @@ function ReportsComponent() {
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [activityType, setActivityType] = useState<'all' | 'Call' | 'Meeting' | 'Demo' | 'FollowUp' | 'Other'>('all');
+  const [activityType, setActivityType] = useState<ActivityTypeFilter>('all');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [expandedWidget, setExpandedWidget] = useState<'approved' | 'pending' | 'rejected' | 'overdue' | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -38,6 +43,8 @@ function ReportsComponent() {
       })
       .finally(() => setLoading(false));
   }, [dateFrom, dateTo]);
+
+  const leadById = (id?: string) => leads.find(lead => lead._id === id);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -62,11 +69,21 @@ function ReportsComponent() {
       if (dateFrom && ts < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
       if (dateTo && ts > new Date(`${dateTo}T23:59:59`).getTime()) return false;
       return true;
+    })
+    .filter(activity => {
+      const q = activitySearch.trim().toLowerCase();
+      if (!q) return true;
+      const school = leadById(activity.leadId)?.schoolName || '';
+      const typeText = formatTaskType(activity.type, activity.typeLabel);
+      return (
+        String(activity.title || '').toLowerCase().includes(q) ||
+        school.toLowerCase().includes(q) ||
+        typeText.toLowerCase().includes(q)
+      );
     });
 
-  const recentActivities = filteredActivities
-    .sort((a, b) => new Date(b.startAt || b.createdAt).getTime() - new Date(a.startAt || a.createdAt).getTime())
-    .slice(0, 8);
+  const sortedActivities = filteredActivities
+    .sort((a, b) => new Date(b.startAt || b.createdAt).getTime() - new Date(a.startAt || a.createdAt).getTime());
 
   const cards = [
     { label: 'กิจกรรมเดือนนี้', value: stats.tasksThisMonth, icon: CalendarClock, tone: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' },
@@ -100,6 +117,15 @@ function ReportsComponent() {
     URL.revokeObjectURL(url);
   };
 
+  const toggleWidget = (key: 'approved' | 'pending' | 'rejected' | 'overdue') => {
+    setExpandedWidget(prev => prev === key ? null : key);
+  };
+
+  const quoteRows = (status: 'approved' | 'pending' | 'rejected') =>
+    reportSummary?.quoteApproval?.quotesByStatus?.[status] || [];
+
+  const overdueRows = reportSummary?.taskReport?.overdueTasks || [];
+
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
       <div>
@@ -121,17 +147,15 @@ function ReportsComponent() {
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">ประเภทกิจกรรม</label>
-            <select value={activityType} onChange={(e) => setActivityType(e.target.value as any)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+            <select value={activityType} onChange={(e) => setActivityType(e.target.value as ActivityTypeFilter)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
               <option value="all">ทั้งหมด</option>
-              <option value="Call">Call</option>
-              <option value="Meeting">Meeting</option>
-              <option value="Demo">Demo</option>
-              <option value="FollowUp">FollowUp</option>
-              <option value="Other">Other</option>
+              {TASK_TYPES.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
           <div className="flex items-end">
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
+            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
               ล้างตัวกรอง
             </button>
           </div>
@@ -186,20 +210,34 @@ function ReportsComponent() {
         <div className="p-6 rounded-2xl glass-panel space-y-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Quote approval report</h3>
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+            <button type="button" onClick={() => toggleWidget('approved')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'approved' ? 'border-emerald-400/50 ring-1 ring-emerald-400/30' : 'border-emerald-500/20'} bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 cursor-pointer`}>
               <span className="block text-lg font-black">{reportSummary?.quoteApproval?.approved || 0}</span>
               Approved
-            </div>
-            <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-300">
+            </button>
+            <button type="button" onClick={() => toggleWidget('pending')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'pending' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
               <span className="block text-lg font-black">{reportSummary?.quoteApproval?.pending || 0}</span>
               Pending
-            </div>
-            <div className="p-3 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-300">
+            </button>
+            <button type="button" onClick={() => toggleWidget('rejected')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'rejected' ? 'border-rose-400/50 ring-1 ring-rose-400/30' : 'border-rose-500/20'} bg-rose-500/10 text-rose-300 hover:bg-rose-500/15 cursor-pointer`}>
               <span className="block text-lg font-black">{reportSummary?.quoteApproval?.rejected || 0}</span>
               Rejected
-            </div>
+            </button>
           </div>
           <div className="text-xs text-slate-400">มูลค่าอนุมัติ: <span className="text-slate-100 font-semibold">{Number(reportSummary?.quoteApproval?.approvedValue || 0).toLocaleString('th-TH')} ฿</span></div>
+          {expandedWidget && ['approved', 'pending', 'rejected'].includes(expandedWidget) && (
+            <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
+              {quoteRows(expandedWidget as 'approved' | 'pending' | 'rejected').length === 0 ? (
+                <div className="py-4 text-center text-slate-500">ไม่มีรายการ</div>
+              ) : (
+                quoteRows(expandedWidget as 'approved' | 'pending' | 'rejected').map((row: any) => (
+                  <a key={row.id} href={`/quotes`} className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
+                    <span className="truncate text-slate-300">{row.quoteNumber} · {leadById(row.leadId)?.schoolName || row.leadId}</span>
+                    <span className="text-slate-100 font-semibold shrink-0">{Number(row.totalAmount || 0).toLocaleString('th-TH')} ฿</span>
+                  </a>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-6 rounded-2xl glass-panel space-y-4">
@@ -213,11 +251,25 @@ function ReportsComponent() {
               <span className="block text-lg font-black">{reportSummary?.requestSla?.breached || 0}</span>
               SLA Breach
             </div>
-            <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-300">
+            <button type="button" onClick={() => toggleWidget('overdue')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'overdue' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
               <span className="block text-lg font-black">{reportSummary?.taskReport?.overdue || 0}</span>
               Task Overdue
-            </div>
+            </button>
           </div>
+          {expandedWidget === 'overdue' && (
+            <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
+              {overdueRows.length === 0 ? (
+                <div className="py-4 text-center text-slate-500">ไม่มีงานเกินกำหนด</div>
+              ) : (
+                overdueRows.map((row: any) => (
+                  <a key={row.id} href="/tasks" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
+                    <span className="truncate text-slate-300">{row.title}</span>
+                    <span className="text-amber-300 shrink-0">{new Date(row.endAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  </a>
+                ))
+              )}
+            </div>
+          )}
           <div className="max-h-36 overflow-y-auto divide-y divide-slate-800 text-[10.5px] text-slate-400">
             {(reportSummary?.requestSla?.rows || []).slice(0, 6).map((row: any) => (
               <div key={row.requestNumber} className="py-2 flex items-center justify-between gap-3">
@@ -294,21 +346,33 @@ function ReportsComponent() {
       </section>
 
       <section className="p-6 rounded-2xl glass-panel space-y-4">
-        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">กิจกรรมล่าสุด ({filteredActivities.length})</h3>
-        <div className="divide-y divide-slate-800">
-          {recentActivities.map(activity => (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">กิจกรรมล่าสุด ({sortedActivities.length})</h3>
+          <div className="relative max-w-xs w-full">
+            <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+            <input
+              type="search"
+              value={activitySearch}
+              onChange={e => setActivitySearch(e.target.value)}
+              placeholder="ค้นหากิจกรรม..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+            />
+          </div>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-800">
+          {sortedActivities.map(activity => (
             <div key={activity._id} className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-400 border border-slate-700">{activity.type || 'Other'}</span>
+                <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel)}</span>
                 <h4 className="mt-1 text-xs font-semibold text-slate-200">{activity.title}</h4>
-                <p className="text-[10px] text-slate-500 line-clamp-1">{activity.description || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                <p className="text-[10px] text-slate-500 line-clamp-1">{activity.description || leadById(activity.leadId)?.schoolName || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
               </div>
               <span className="text-[10px] text-slate-500 shrink-0">
                 {new Date(activity.startAt || activity.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
               </span>
             </div>
           ))}
-          {!loading && recentActivities.length === 0 && (
+          {!loading && sortedActivities.length === 0 && (
             <div className="py-12 text-center text-slate-500 text-xs">ยังไม่มีข้อมูลกิจกรรมสำหรับรายงาน</div>
           )}
         </div>

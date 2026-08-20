@@ -105,12 +105,102 @@ export async function seedDatabase(db: Db) {
   if (productsCount === 0) {
     console.log('[seed]: Seeding products...');
     const initialProducts: Types.Product[] = [
-      { _id: 'p1', name: 'หลักสูตรวิทยาการคำนวณระดับประถม (Coding A)', price: 45000, category: 'Coding', isActive: true, specialOffers: 'ซื้อ 10 แถม 1 ชุดคู่มือครู' },
-      { _id: 'p2', name: 'หลักสูตรวิทยาการคำนวณระดับมัธยม (Coding B)', price: 65000, category: 'Coding', isActive: true },
-      { _id: 'p3', name: 'ชุดสื่อบอร์ดหุ่นยนต์อัจฉริยะ (Robotics Kit v3)', price: 12500, category: 'Hardware', isActive: true, specialOffers: 'รับประกัน 2 ปีเต็ม' },
-      { _id: 'p4', name: 'ระบบการเรียนรู้ดิจิทัล LMS (1 ปี)', price: 95000, category: 'Software', isActive: true, specialOffers: 'ฟรีอบรมเทรนนิ่งบุคลากร 2 ครั้ง' }
+      { _id: 'p1', name: 'หลักสูตรวิทยาการคำนวณระดับประถม (Coding A)', price: 45000, category: 'Coding', isActive: true, productCategory: 'generic', priceMode: 'fixed', specialOffers: 'ซื้อ 10 แถม 1 ชุดคู่มือครู' },
+      { _id: 'p2', name: 'หลักสูตรวิทยาการคำนวณระดับมัธยม (Coding B)', price: 65000, category: 'Coding', isActive: true, productCategory: 'generic', priceMode: 'fixed' },
+      { _id: 'p3', name: 'ชุดสื่อบอร์ดหุ่นยนต์อัจฉริยะ (Robotics Kit v3)', price: 12500, category: 'Hardware', isActive: true, productCategory: 'generic', priceMode: 'fixed', specialOffers: 'รับประกัน 2 ปีเต็ม' },
+      { _id: 'p4', name: 'ระบบการเรียนรู้ดิจิทัล LMS (1 ปี)', price: 95000, category: 'Software', isActive: true, productCategory: 'generic', priceMode: 'fixed', specialOffers: 'ฟรีอบรมเทรนนิ่งบุคลากร 2 ครั้ง' },
+      {
+        _id: 'p_clever',
+        name: 'Clever Exercise — Digital Exercise Platform',
+        price: 0,
+        category: 'Clever Exercise',
+        isActive: true,
+        productCategory: 'clever_exercise',
+        priceMode: 'manual',
+        packages: [
+          { id: '1sub_sem', label: '1 วิชา / 1 ภาคเรียน' },
+          { id: '1sub_year', label: '1 วิชา / 1 ปี' },
+          { id: '2sub_year', label: '2 วิชา / 1 ปี' }
+        ],
+        description: 'Clever Math, Clever English หรือ Clever Math + Clever English — กรอกราคาต่อ User เอง'
+      },
+      {
+        _id: 'p_vr_sw',
+        name: 'VR Science Lab — Software Subscription',
+        price: 1500,
+        category: 'VR Science Lab',
+        isActive: true,
+        productCategory: 'vr_software',
+        priceMode: 'tiered',
+        priceTiers: { standard: 1500, promotion: 750 },
+        description: '18 Labs พร้อม LMS, Server/Cloud และ Support'
+      },
+      {
+        _id: 'p_vr_hw',
+        name: 'VR Science Lab — Hardware',
+        price: 0,
+        category: 'VR Science Lab',
+        isActive: true,
+        productCategory: 'vr_hardware_purchase',
+        priceMode: 'fixed',
+        hardwareOptions: [
+          { id: 'vr2', label: 'VR Station — 2 Headsets', purchasePrice: 119000, rentalPricePerYear: 45900 },
+          { id: 'vr4', label: 'VR Station — 4 Headsets', purchasePrice: 189000, rentalPricePerYear: 69900 },
+          { id: 'teacher', label: 'Teacher Set', purchasePrice: 99000, rentalPricePerYear: 36900 }
+        ]
+      }
     ];
     await productsCollection.insertMany(initialProducts as any);
+  }
+
+  const extensionProducts: Types.Product[] = [
+    {
+      _id: 'p_clever',
+      name: 'Clever Exercise — Digital Exercise Platform',
+      price: 0,
+      category: 'Clever Exercise',
+      isActive: true,
+      productCategory: 'clever_exercise',
+      priceMode: 'manual',
+      packages: [
+        { id: '1sub_sem', label: '1 วิชา / 1 ภาคเรียน' },
+        { id: '1sub_year', label: '1 วิชา / 1 ปี' },
+        { id: '2sub_year', label: '2 วิชา / 1 ปี' }
+      ],
+      description: 'Clever Math, Clever English — กรอกราคาต่อ User เอง'
+    },
+    {
+      _id: 'p_vr_sw',
+      name: 'VR Science Lab — Software Subscription',
+      price: 1500,
+      category: 'VR Science Lab',
+      isActive: true,
+      productCategory: 'vr_software',
+      priceMode: 'tiered',
+      priceTiers: { standard: 1500, promotion: 750 },
+      description: '18 Labs พร้อม LMS, Server/Cloud และ Support'
+    },
+    {
+      _id: 'p_vr_hw',
+      name: 'VR Science Lab — Hardware',
+      price: 0,
+      category: 'VR Science Lab',
+      isActive: true,
+      productCategory: 'vr_hardware_purchase',
+      priceMode: 'fixed',
+      hardwareOptions: [
+        { id: 'vr2', label: 'VR Station — 2 Headsets', purchasePrice: 119000, rentalPricePerYear: 45900 },
+        { id: 'vr4', label: 'VR Station — 4 Headsets', purchasePrice: 189000, rentalPricePerYear: 69900 },
+        { id: 'teacher', label: 'Teacher Set', purchasePrice: 99000, rentalPricePerYear: 36900 }
+      ]
+    }
+  ];
+  for (const product of extensionProducts) {
+    const exists = await productsCollection.findOne({ _id: product._id } as any);
+    if (!exists) {
+      await productsCollection.insertOne(product as any);
+      console.log(`[seed]: Added product ${product._id}`);
+    }
   }
 
   // 4. Discount Limits

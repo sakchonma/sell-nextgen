@@ -29,7 +29,7 @@ export const Route = createRoute({
   component: AILoggerComponent,
 });
 
-type TaskType = 'Call' | 'Meeting' | 'Demo' | 'FollowUp' | 'Other';
+type TaskType = 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
 type UrgencyLevel = 'Low' | 'Medium' | 'High';
 
 interface MatchedLead {
@@ -104,8 +104,9 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 const taskTypeOptions: Array<{ value: TaskType; label: string }> = [
   { value: 'Call', label: 'Call' },
   { value: 'Meeting', label: 'Meeting' },
+  { value: 'Presentation', label: 'Presentation' },
   { value: 'Demo', label: 'Demo' },
-  { value: 'FollowUp', label: 'FollowUp' },
+  { value: 'FollowUp', label: 'Follow up' },
   { value: 'Other', label: 'Other' }
 ];
 

@@ -279,6 +279,16 @@ export interface Product {
   category: string;
   specialOffers?: string;
   isActive: boolean;
+  productCategory?: 'clever_exercise' | 'vr_software' | 'vr_hardware_purchase' | 'vr_hardware_rental' | 'generic';
+  priceMode?: 'manual' | 'fixed' | 'tiered';
+  packages?: Array<{ id: string; label: string; duration?: string; subjects?: number }>;
+  priceTiers?: { standard: number; promotion: number };
+  hardwareOptions?: Array<{
+    id: string;
+    label: string;
+    purchasePrice: number;
+    rentalPricePerYear: number;
+  }>;
   priceHistory?: Array<{
     price: number;
     changedBy: string;

@@ -91,7 +91,25 @@ const productBodySchema = z.object({
   description: z.string().trim().optional(),
   category: z.string().trim().min(1).default('General'),
   specialOffers: z.string().trim().optional(),
-  isActive: z.coerce.boolean().default(true)
+  isActive: z.coerce.boolean().default(true),
+  productCategory: z.enum(['clever_exercise', 'vr_software', 'vr_hardware_purchase', 'vr_hardware_rental', 'generic']).optional(),
+  priceMode: z.enum(['manual', 'fixed', 'tiered']).optional(),
+  packages: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    duration: z.string().optional(),
+    subjects: z.coerce.number().optional()
+  })).optional(),
+  priceTiers: z.object({
+    standard: z.coerce.number().min(0),
+    promotion: z.coerce.number().min(0)
+  }).optional(),
+  hardwareOptions: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    purchasePrice: z.coerce.number().min(0),
+    rentalPricePerYear: z.coerce.number().min(0)
+  })).optional()
 }).strict();
 
 const productUpdateBodySchema = productBodySchema.partial().strict();

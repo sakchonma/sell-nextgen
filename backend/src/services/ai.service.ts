@@ -3,7 +3,7 @@ import { config } from '../config/index.js';
 
 const genAI = config.gemini.apiKey ? new GoogleGenerativeAI(config.gemini.apiKey) : null;
 
-export type ConversationalTaskType = 'Call' | 'Meeting' | 'Demo' | 'FollowUp' | 'Other';
+export type ConversationalTaskType = 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
 export type UrgencyLevel = 'Low' | 'Medium' | 'High';
 
 export interface ParsedConversationalLog {
@@ -21,7 +21,7 @@ export interface ParsedConversationalLog {
   missingFields: string[];
 }
 
-const TASK_TYPES: ConversationalTaskType[] = ['Call', 'Meeting', 'Demo', 'FollowUp', 'Other'];
+const TASK_TYPES: ConversationalTaskType[] = ['Call', 'Meeting', 'Presentation', 'Demo', 'FollowUp', 'Other'];
 const URGENCY_LEVELS: UrgencyLevel[] = ['Low', 'Medium', 'High'];
 
 function cleanAndParseJSON(text: string) {
@@ -220,6 +220,7 @@ function titleFromText(text: string, type: ConversationalTaskType, schoolMention
   const typeLabel: Record<ConversationalTaskType, string> = {
     Call: 'โทรติดต่อลูกค้า',
     Meeting: 'นัดหมายลูกค้า',
+    Presentation: 'นำเสนอสินค้า',
     Demo: 'สาธิตระบบ',
     FollowUp: 'ติดตามงานขาย',
     Other: 'บันทึกกิจกรรม'

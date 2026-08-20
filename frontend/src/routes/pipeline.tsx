@@ -22,12 +22,13 @@ export const Route = createRoute({
 });
 
 const STAGES = [
-  { id: 'Qualified', label: 'ผู้สนใจผ่านเกณฑ์', color: 'border-blue-500/20 text-blue-400 bg-blue-500/5' },
-  { id: 'Proposal', label: 'ยื่นข้อเสนอ', color: 'border-indigo-500/20 text-indigo-400 bg-indigo-500/5' },
-  { id: 'Demo', label: 'สาธิตการใช้สื่อ', color: 'border-purple-500/20 text-purple-400 bg-purple-500/5' },
-  { id: 'Negotiation', label: 'เจรจาต่อรอง', color: 'border-amber-500/20 text-amber-400 bg-amber-500/5' },
-  { id: 'Won', label: 'ปิดการขายได้', color: 'border-emerald-500/20 text-emerald-400 bg-emerald-500/5' },
-  { id: 'Lost', label: 'สูญเสียโอกาส', color: 'border-rose-500/20 text-rose-400 bg-rose-500/5' }
+  { id: 'Qualified', label: 'Qualify', color: 'border-blue-500/20 text-blue-400 bg-blue-500/5' },
+  { id: 'Presentation', label: 'Presentation', color: 'border-cyan-500/20 text-cyan-400 bg-cyan-500/5' },
+  { id: 'Demo', label: 'Demo', color: 'border-purple-500/20 text-purple-400 bg-purple-500/5' },
+  { id: 'Proposal', label: 'Proposal', color: 'border-indigo-500/20 text-indigo-400 bg-indigo-500/5' },
+  { id: 'Negotiation', label: 'Negotiation', color: 'border-amber-500/20 text-amber-400 bg-amber-500/5' },
+  { id: 'Won', label: 'Won', color: 'border-emerald-500/20 text-emerald-400 bg-emerald-500/5' },
+  { id: 'Lost', label: 'Lost', color: 'border-rose-500/20 text-rose-400 bg-rose-500/5' }
 ];
 
 function formatMoney(value: number) {
@@ -229,7 +230,7 @@ function PipelineComponent() {
                         onChange={(e) => handleStageChange(opp, e.target.value)}
                         className="px-2 py-1 rounded border border-slate-800 bg-[#090d16] text-[10px] text-slate-300 focus:outline-none cursor-pointer"
                       >
-                        {STAGES.map(item => <option key={item.id} value={item.id}>{item.id}</option>)}
+                        {STAGES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
                       </select>
                     </div>
                   </button>
