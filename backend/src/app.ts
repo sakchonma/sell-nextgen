@@ -749,6 +749,19 @@ function asDate(value: any): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+function localDateKey(value: any): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const date = asDate(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 function addDays(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
@@ -1723,6 +1736,8 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
 
   const dateFrom = typeof req.query.dateFrom === 'string' ? new Date(`${req.query.dateFrom}T00:00:00`) : null;
   const dateTo = typeof req.query.dateTo === 'string' ? new Date(`${req.query.dateTo}T23:59:59`) : null;
+  const dateFromKey = typeof req.query.dateFrom === 'string' ? req.query.dateFrom : null;
+  const dateToKey = typeof req.query.dateTo === 'string' ? req.query.dateTo : null;
   const hasDateFilter = Boolean(dateFrom || dateTo);
   const inRangeByDate = (value: any) => {
     if (!hasDateFilter) return true;
@@ -1730,6 +1745,14 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     const time = asDate(value).getTime();
     if (dateFrom && time < dateFrom.getTime()) return false;
     if (dateTo && time > dateTo.getTime()) return false;
+    return true;
+  };
+  const inFunnelDateRange = (value: any) => {
+    if (!hasDateFilter) return true;
+    const key = localDateKey(value);
+    if (!key) return false;
+    if (dateFromKey && key < dateFromKey) return false;
+    if (dateToKey && key > dateToKey) return false;
     return true;
   };
 
@@ -1862,32 +1885,10 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     }, [])
     .sort((a: any, b: any) => b.weightedForecast - a.weightedForecast);
 
-  const leadIdsWithTaskInRange = new Set(
-    tasksByDate.map((task: any) => task.leadId).filter(Boolean)
-  );
-  const leadIdsWithQuoteInRange = new Set(
-    quotes.map((quote: any) => quote.leadId).filter(Boolean)
-  );
-  const allVisibleLeadIds = new Set(visibleLeads.map((lead: any) => lead._id));
-  const leadIdsWithStageChangeInRange = new Set<string>();
-  for (const opp of oppsRaw) {
-    if (currentUser.rank < 4 && opp.assignedTo !== currentUser._id && !allVisibleLeadIds.has(opp.leadId)) {
-      continue;
-    }
-    for (const entry of opp.stageHistory || []) {
-      if (entry.fromStage && inRangeByDate(entry.changedAt)) {
-        leadIdsWithStageChangeInRange.add(opp.leadId);
-        break;
-      }
-    }
-  }
   const funnelLeads = hasDateFilter
     ? visibleLeads.filter((lead: any) =>
-        inRangeByDate(lead.lastContactedAt) ||
-        inRangeByDate(lead.stageEventAt) ||
-        leadIdsWithTaskInRange.has(lead._id) ||
-        leadIdsWithQuoteInRange.has(lead._id) ||
-        leadIdsWithStageChangeInRange.has(lead._id)
+        inFunnelDateRange(lead.lastContactedAt) ||
+        inFunnelDateRange(lead.stageEventAt)
       )
     : visibleLeads;
   const funnelLeadIds = new Set(funnelLeads.map((lead: any) => lead._id));
