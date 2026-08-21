@@ -1,9 +1,10 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
-import { BarChart3, CalendarClock, Download, FileText, GitBranch, Printer, School, Search, TrendingUp } from 'lucide-react';
+import { BarChart3, CalendarClock, Download, FileText, GitBranch, Printer, School, Search, TrendingUp, X } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { TASK_TYPES, formatTaskType } from '../lib/task-types';
+import { ModalShell, PaginationControls } from '../components/ui';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -12,7 +13,17 @@ export const Route = createRoute({
 });
 
 type ActivityTypeFilter = 'all' | 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
-type ExpandedWidget = 'approved' | 'pending' | 'rejected' | 'overdueNow' | 'overdueInRange' | null;
+type DetailModalKey =
+  | 'approved'
+  | 'pending'
+  | 'rejected'
+  | 'overdueNow'
+  | 'overdueInRange'
+  | 'slaCompleted'
+  | 'slaBreached'
+  | null;
+
+const MODAL_PAGE_SIZE = 15;
 
 function formatFilterDate(value: string) {
   if (!value) return '';
@@ -27,7 +38,8 @@ function ReportsComponent() {
   const [dateTo, setDateTo] = useState('');
   const [activityType, setActivityType] = useState<ActivityTypeFilter>('all');
   const [activitySearch, setActivitySearch] = useState('');
-  const [expandedWidget, setExpandedWidget] = useState<ExpandedWidget>(null);
+  const [detailModal, setDetailModal] = useState<DetailModalKey>(null);
+  const [modalPage, setModalPage] = useState(1);
 
   useEffect(() => {
     setLoading(true);
@@ -140,8 +152,14 @@ function ReportsComponent() {
     URL.revokeObjectURL(url);
   };
 
-  const toggleWidget = (key: Exclude<ExpandedWidget, null>) => {
-    setExpandedWidget(prev => prev === key ? null : key);
+  const openDetailModal = (key: Exclude<DetailModalKey, null>) => {
+    setDetailModal(key);
+    setModalPage(1);
+  };
+
+  const closeDetailModal = () => {
+    setDetailModal(null);
+    setModalPage(1);
   };
 
   const quoteRows = (status: 'approved' | 'pending' | 'rejected') =>
@@ -149,6 +167,36 @@ function ReportsComponent() {
 
   const overdueNowRows = reportSummary?.taskReport?.overdueNowTasks || [];
   const overdueInRangeRows = reportSummary?.taskReport?.overdueInRangeTasks || [];
+  const slaRows = reportSummary?.requestSla?.rows || [];
+  const slaCompletedRows = slaRows.filter((row: any) => row.status === 'Completed');
+  const slaBreachedRows = slaRows.filter((row: any) => row.breached);
+
+  const modalConfig = useMemo(() => {
+    switch (detailModal) {
+      case 'approved':
+        return { title: 'ใบเสนอราคาที่อนุมัติ', subtitle: `${quoteRows('approved').length} รายการ`, kind: 'quote' as const, rows: quoteRows('approved') };
+      case 'pending':
+        return { title: 'ใบเสนอราคารออนุมัติ', subtitle: `${quoteRows('pending').length} รายการ`, kind: 'quote' as const, rows: quoteRows('pending') };
+      case 'rejected':
+        return { title: 'ใบเสนอราคาที่ปฏิเสธ', subtitle: `${quoteRows('rejected').length} รายการ`, kind: 'quote' as const, rows: quoteRows('rejected') };
+      case 'overdueNow':
+        return { title: 'งานค้าง ณ วันนี้', subtitle: `${overdueNowRows.length} รายการ`, kind: 'task' as const, rows: overdueNowRows };
+      case 'overdueInRange':
+        return { title: 'งานค้างในช่วงที่เลือก', subtitle: `${overdueInRangeRows.length} รายการ`, kind: 'task' as const, rows: overdueInRangeRows };
+      case 'slaCompleted':
+        return { title: 'คำขอที่เสร็จสิ้น', subtitle: `${slaCompletedRows.length} รายการ`, kind: 'sla' as const, rows: slaCompletedRows };
+      case 'slaBreached':
+        return { title: 'คำขอที่เกิน SLA', subtitle: `${slaBreachedRows.length} รายการ`, kind: 'sla' as const, rows: slaBreachedRows };
+      default:
+        return null;
+    }
+  }, [detailModal, reportSummary, overdueNowRows.length, overdueInRangeRows.length, slaCompletedRows.length, slaBreachedRows.length]);
+
+  const pagedModalRows = useMemo(() => {
+    if (!modalConfig) return [];
+    const start = (modalPage - 1) * MODAL_PAGE_SIZE;
+    return modalConfig.rows.slice(start, start + MODAL_PAGE_SIZE);
+  }, [modalConfig, modalPage]);
 
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
@@ -180,7 +228,7 @@ function ReportsComponent() {
             </select>
           </div>
           <div className="flex items-end">
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); setExpandedWidget(null); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
+            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); closeDetailModal(); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
               ล้างตัวกรอง
             </button>
           </div>
@@ -232,104 +280,162 @@ function ReportsComponent() {
       </section>
 
       <section className={`grid grid-cols-1 xl:grid-cols-2 gap-4 ${loading ? 'opacity-60' : ''}`}>
-        <div className="p-6 rounded-2xl glass-panel space-y-4">
-          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Quote approval report</h3>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <button type="button" onClick={() => toggleWidget('approved')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'approved' ? 'border-emerald-400/50 ring-1 ring-emerald-400/30' : 'border-emerald-500/20'} bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.quoteApproval?.approved || 0}</span>
-              Approved
+        <div className="p-6 rounded-2xl glass-panel space-y-5">
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-400">Quote approval report</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button type="button" onClick={() => openDetailModal('approved')} className="p-5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 cursor-pointer text-left transition-all hover:scale-[1.01]">
+              <span className="block text-3xl font-black leading-none">{loading ? '...' : reportSummary?.quoteApproval?.approved || 0}</span>
+              <span className="block mt-2 text-sm font-semibold">Approved</span>
+              <span className="block mt-1 text-xs text-emerald-200/80">กดเพื่อดูรายละเอียด</span>
             </button>
-            <button type="button" onClick={() => toggleWidget('pending')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'pending' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.quoteApproval?.pending || 0}</span>
-              Pending
+            <button type="button" onClick={() => openDetailModal('pending')} className="p-5 rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer text-left transition-all hover:scale-[1.01]">
+              <span className="block text-3xl font-black leading-none">{loading ? '...' : reportSummary?.quoteApproval?.pending || 0}</span>
+              <span className="block mt-2 text-sm font-semibold">Pending</span>
+              <span className="block mt-1 text-xs text-amber-200/80">กดเพื่อดูรายละเอียด</span>
             </button>
-            <button type="button" onClick={() => toggleWidget('rejected')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'rejected' ? 'border-rose-400/50 ring-1 ring-rose-400/30' : 'border-rose-500/20'} bg-rose-500/10 text-rose-300 hover:bg-rose-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.quoteApproval?.rejected || 0}</span>
-              Rejected
+            <button type="button" onClick={() => openDetailModal('rejected')} className="p-5 rounded-xl border border-rose-500/25 bg-rose-500/10 text-rose-300 hover:bg-rose-500/15 cursor-pointer text-left transition-all hover:scale-[1.01]">
+              <span className="block text-3xl font-black leading-none">{loading ? '...' : reportSummary?.quoteApproval?.rejected || 0}</span>
+              <span className="block mt-2 text-sm font-semibold">Rejected</span>
+              <span className="block mt-1 text-xs text-rose-200/80">กดเพื่อดูรายละเอียด</span>
             </button>
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-sm text-slate-400">
             มูลค่าอนุมัติ:{' '}
-            <span className="text-slate-100 font-semibold">
+            <span className="text-slate-100 font-bold text-base">
               {loading ? '...' : Number(reportSummary?.quoteApproval?.approvedValue || 0).toLocaleString('th-TH')} ฿
             </span>
           </div>
-          {expandedWidget && ['approved', 'pending', 'rejected'].includes(expandedWidget) && (
-            <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
-              {quoteRows(expandedWidget as 'approved' | 'pending' | 'rejected').length === 0 ? (
-                <div className="py-4 text-center text-slate-500">ไม่มีรายการ</div>
-              ) : (
-                quoteRows(expandedWidget as 'approved' | 'pending' | 'rejected').map((row: any) => (
-                  <a key={row.id} href="/quotes" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
-                    <span className="truncate text-slate-300">{row.quoteNumber} · {leadById(row.leadId)?.schoolName || row.leadId}</span>
-                    <span className="text-slate-100 font-semibold shrink-0">{Number(row.totalAmount || 0).toLocaleString('th-TH')} ฿</span>
-                  </a>
-                ))
-              )}
-            </div>
-          )}
         </div>
 
-        <div className="p-6 rounded-2xl glass-panel space-y-4">
-          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Request SLA / Task overdue</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-            <div className="p-3 rounded-lg border border-slate-800 bg-[#121826]/40">
-              <span className="block text-lg font-black text-slate-100">{loading ? '...' : reportSummary?.requestSla?.completed || 0}</span>
-              Completed
-            </div>
-            <div className="p-3 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-300">
-              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.requestSla?.breached || 0}</span>
-              SLA Breach
-            </div>
-            <button type="button" onClick={() => toggleWidget('overdueNow')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'overdueNow' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.taskReport?.overdueNow || 0}</span>
-              Overdue วันนี้
+        <div className="p-6 rounded-2xl glass-panel space-y-5">
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-400">Request SLA / Task overdue</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <button type="button" onClick={() => openDetailModal('slaCompleted')} className="p-5 rounded-xl border border-slate-800 bg-[#121826]/40 hover:bg-slate-800/40 cursor-pointer text-left transition-all hover:scale-[1.01]">
+              <span className="block text-3xl font-black leading-none text-slate-100">{loading ? '...' : reportSummary?.requestSla?.completed || 0}</span>
+              <span className="block mt-2 text-sm font-semibold text-slate-300">Completed</span>
+              <span className="block mt-1 text-xs text-slate-500">กดเพื่อดูรายละเอียด</span>
             </button>
-            <button type="button" onClick={() => toggleWidget('overdueInRange')} disabled={!hasDateFilter} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'overdueInRange' ? 'border-orange-400/50 ring-1 ring-orange-400/30' : 'border-orange-500/20'} bg-orange-500/10 text-orange-300 hover:bg-orange-500/15 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}>
-              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.taskReport?.overdueInRange || 0}</span>
-              Overdue ในช่วง
+            <button type="button" onClick={() => openDetailModal('slaBreached')} className="p-5 rounded-xl border border-rose-500/25 bg-rose-500/10 text-rose-300 hover:bg-rose-500/15 cursor-pointer text-left transition-all hover:scale-[1.01]">
+              <span className="block text-3xl font-black leading-none">{loading ? '...' : reportSummary?.requestSla?.breached || 0}</span>
+              <span className="block mt-2 text-sm font-semibold">SLA Breach</span>
+              <span className="block mt-1 text-xs text-rose-200/80">กดเพื่อดูรายละเอียด</span>
             </button>
-          </div>
-          {expandedWidget === 'overdueNow' && (
-            <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
-              {overdueNowRows.length === 0 ? (
-                <div className="py-4 text-center text-slate-500">ไม่มีงานเกินกำหนด ณ วันนี้</div>
-              ) : (
-                overdueNowRows.map((row: any) => (
-                  <a key={row.id} href="/tasks" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
-                    <span className="truncate text-slate-300">{row.title}</span>
-                    <span className="text-amber-300 shrink-0">{new Date(row.endAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                  </a>
-                ))
-              )}
-            </div>
-          )}
-          {expandedWidget === 'overdueInRange' && (
-            <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
-              {!hasDateFilter ? (
-                <div className="py-4 text-center text-slate-500">เลือกช่วงวันที่เพื่อดูงานค้างในช่วง</div>
-              ) : overdueInRangeRows.length === 0 ? (
-                <div className="py-4 text-center text-slate-500">ไม่มีงานค้างในช่วงที่เลือก</div>
-              ) : (
-                overdueInRangeRows.map((row: any) => (
-                  <a key={row.id} href="/tasks" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
-                    <span className="truncate text-slate-300">{row.title}</span>
-                    <span className="text-orange-300 shrink-0">{new Date(row.endAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                  </a>
-                ))
-              )}
-            </div>
-          )}
-          <div className="max-h-36 overflow-y-auto divide-y divide-slate-800 text-[10.5px] text-slate-400">
-            {(reportSummary?.requestSla?.rows || []).slice(0, 6).map((row: any) => (
-              <div key={row.requestNumber} className="py-2 flex items-center justify-between gap-3">
-                <span className="truncate">{row.requestNumber} · {row.title}</span>
-                <span className={row.breached ? 'text-rose-300' : 'text-slate-500'}>{row.priority}</span>
-              </div>
-            ))}
+            <button type="button" onClick={() => openDetailModal('overdueNow')} className="p-5 rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer text-left transition-all hover:scale-[1.01]">
+              <span className="block text-3xl font-black leading-none">{loading ? '...' : reportSummary?.taskReport?.overdueNow || 0}</span>
+              <span className="block mt-2 text-sm font-semibold">Overdue วันนี้</span>
+              <span className="block mt-1 text-xs text-amber-200/80">กดเพื่อดูรายละเอียด</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openDetailModal('overdueInRange')}
+              disabled={!hasDateFilter}
+              className="p-5 rounded-xl border border-orange-500/25 bg-orange-500/10 text-orange-300 hover:bg-orange-500/15 cursor-pointer text-left transition-all hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            >
+              <span className="block text-3xl font-black leading-none">{loading ? '...' : reportSummary?.taskReport?.overdueInRange || 0}</span>
+              <span className="block mt-2 text-sm font-semibold">Overdue ในช่วง</span>
+              <span className="block mt-1 text-xs text-orange-200/80">{hasDateFilter ? 'กดเพื่อดูรายละเอียด' : 'ต้องเลือกช่วงวันที่'}</span>
+            </button>
           </div>
         </div>
       </section>
+
+      {detailModal && modalConfig && (
+        <ModalShell>
+          <div className="w-full max-w-4xl max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col">
+            <div className="flex items-start justify-between gap-4 p-6 border-b border-slate-800">
+              <div>
+                <h3 className="text-xl font-bold text-slate-100">{modalConfig.title}</h3>
+                <p className="text-sm text-slate-400 mt-1">{modalConfig.subtitle}</p>
+              </div>
+              <button type="button" onClick={closeDetailModal} className="text-slate-500 hover:text-slate-200 p-1" title="ปิด">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+              {pagedModalRows.length === 0 ? (
+                <div className="py-16 text-center text-slate-500 text-base">ไม่มีรายการ</div>
+              ) : modalConfig.kind === 'quote' ? (
+                pagedModalRows.map((row: any) => (
+                  <a
+                    key={row.id}
+                    href="/quotes"
+                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-100">{row.quoteNumber}</div>
+                        <div className="text-sm text-slate-400 mt-1">{leadById(row.leadId)?.schoolName || row.leadId || 'ไม่ระบุโรงเรียน'}</div>
+                        {row.createdAt && (
+                          <div className="text-xs text-slate-500 mt-1">
+                            สร้างเมื่อ {new Date(row.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-lg font-black text-indigo-300 shrink-0">{Number(row.totalAmount || 0).toLocaleString('th-TH')} ฿</div>
+                    </div>
+                  </a>
+                ))
+              ) : modalConfig.kind === 'task' ? (
+                pagedModalRows.map((row: any) => (
+                  <a
+                    key={row.id}
+                    href="/tasks"
+                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-100">{row.title}</div>
+                        <div className="text-sm text-slate-400 mt-1">
+                          {formatTaskType(row.type, row.typeLabel)}
+                          {leadById(row.leadId)?.schoolName ? ` · ${leadById(row.leadId)?.schoolName}` : ''}
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-amber-300 shrink-0">
+                        ครบกำหนด {new Date(row.endAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </div>
+                    </div>
+                  </a>
+                ))
+              ) : (
+                pagedModalRows.map((row: any) => (
+                  <a
+                    key={row.requestNumber}
+                    href="/requests"
+                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-100">{row.requestNumber}</div>
+                        <div className="text-sm text-slate-400 mt-1">{row.title}</div>
+                        <div className="text-xs text-slate-500 mt-1">{row.department || '-'} · {row.status}</div>
+                      </div>
+                      <div className={`text-sm font-semibold shrink-0 ${row.breached ? 'text-rose-300' : 'text-slate-400'}`}>
+                        {row.priority}
+                        {row.slaDueAt ? ` · ${new Date(row.slaDueAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
+                      </div>
+                    </div>
+                  </a>
+                ))
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-800 bg-slate-900/95">
+              <div className="text-sm text-slate-400 mb-3">
+                แสดง {pagedModalRows.length} จาก {modalConfig.rows.length} รายการ · หน้าละ {MODAL_PAGE_SIZE} รายการ
+              </div>
+              <div className="text-sm [&_button]:text-sm [&_button]:px-4 [&_button]:py-2.5 [&_span]:text-sm">
+                <PaginationControls
+                  page={modalPage}
+                  total={modalConfig.rows.length}
+                  limit={MODAL_PAGE_SIZE}
+                  onPageChange={setModalPage}
+                />
+              </div>
+            </div>
+          </div>
+        </ModalShell>
+      )}
 
       <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Sales forecast</h3>

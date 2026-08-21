@@ -10,10 +10,12 @@ import {
   History,
   Link as LinkIcon,
   Plus,
+  Search,
   TrendingUp,
   X
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { filterLeadsBySearch } from '../lib/lead-search';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -49,6 +51,8 @@ function PipelineComponent() {
   const [error, setError] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newLeadId, setNewLeadId] = useState('');
+  const [newLeadSearch, setNewLeadSearch] = useState('');
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [newValue, setNewValue] = useState('');
   const [newCloseDate, setNewCloseDate] = useState('');
   const [newProbability, setNewProbability] = useState('20');
@@ -66,9 +70,41 @@ function PipelineComponent() {
       setUsers(userData);
       setForecast(forecastData);
       setQuotes(quoteData);
-      if (leadData.length > 0 && !newLeadId) setNewLeadId(leadData[0]._id);
     });
   };
+
+  const openAddModal = () => {
+    setError('');
+    setNewTitle('');
+    setNewLeadId('');
+    setNewLeadSearch('');
+    setShowLeadDropdown(false);
+    setNewValue('');
+    setNewCloseDate('');
+    setNewProbability('20');
+    setShowAddModal(true);
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setShowLeadDropdown(false);
+  };
+
+  const selectLead = (lead: { _id: string; schoolName: string } | null) => {
+    if (!lead) {
+      setNewLeadId('');
+      setNewLeadSearch('');
+    } else {
+      setNewLeadId(lead._id);
+      setNewLeadSearch(lead.schoolName);
+    }
+    setShowLeadDropdown(false);
+  };
+
+  const filteredLeads = useMemo(
+    () => filterLeadsBySearch(leads, newLeadSearch),
+    [leads, newLeadSearch]
+  );
 
   useEffect(() => {
     fetchData();
@@ -85,6 +121,10 @@ function PipelineComponent() {
   const handleCreateOpp = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!newLeadId) {
+      setError('กรุณาเลือกโรงเรียนจากรายการที่ค้นหา');
+      return;
+    }
     apiJson('/api/opportunities', {
       leadId: newLeadId,
       title: newTitle,
@@ -93,8 +133,10 @@ function PipelineComponent() {
       probability: Number(newProbability) || 20
     })
       .then(() => {
-        setShowAddModal(false);
+        closeAddModal();
         setNewTitle('');
+        setNewLeadId('');
+        setNewLeadSearch('');
         setNewValue('');
         setNewCloseDate('');
         setNewProbability('20');
@@ -156,7 +198,7 @@ function PipelineComponent() {
           <p className="text-xs text-slate-400 mt-1">ติดตามเป้าหมายการขาย มูลค่า forecast และประวัติ stage ของแต่ละดีล</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={openAddModal}
           className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
         >
           <Plus size={14} /> เพิ่มดีลเสนอขาย
@@ -251,14 +293,57 @@ function PipelineComponent() {
           <form onSubmit={handleCreateOpp} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มดีลโอกาสการขายใหม่</h3>
             <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="ชื่อโครงการ" required className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-            <select value={newLeadId} onChange={e => setNewLeadId(e.target.value)} required className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-              {leads.map(lead => <option key={lead._id} value={lead._id}>{lead.schoolName}</option>)}
-            </select>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <input
+                type="text"
+                value={newLeadSearch}
+                onChange={e => {
+                  setNewLeadSearch(e.target.value);
+                  setNewLeadId('');
+                  setShowLeadDropdown(true);
+                }}
+                onFocus={() => setShowLeadDropdown(true)}
+                onBlur={() => setTimeout(() => setShowLeadDropdown(false), 150)}
+                placeholder="พิมพ์ชื่อโรงเรียนเพื่อค้นหา..."
+                autoComplete="off"
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+              {showLeadDropdown && (
+                <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-800 bg-[#090d16] shadow-xl">
+                  {filteredLeads.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-slate-500">
+                      {newLeadSearch.trim() ? `ไม่พบโรงเรียนที่ตรงกับ "${newLeadSearch.trim()}"` : 'ไม่มีโรงเรียนในระบบ'}
+                    </div>
+                  ) : (
+                    <>
+                      {newLeadSearch.trim() && (
+                        <div className="px-3 py-1.5 text-[10px] text-slate-500 border-b border-slate-800/80">
+                          แสดง {filteredLeads.length} รายการที่ใกล้เคียงที่สุด
+                        </div>
+                      )}
+                      {filteredLeads.map(lead => (
+                        <button
+                          key={lead._id}
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => selectLead(lead)}
+                          className={`w-full px-3 py-2 text-left text-xs hover:bg-slate-800 ${newLeadId === lead._id ? 'bg-indigo-500/10 text-indigo-200' : 'text-slate-200'}`}
+                        >
+                          <span className="font-medium">{lead.schoolName}</span>
+                          {lead.zone && <span className="text-slate-500"> · {lead.zone}</span>}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <input type="number" min="0" value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="มูลค่าโครงการ" required className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             <input type="number" min="0" max="100" value={newProbability} onChange={e => setNewProbability(e.target.value)} placeholder="Probability %" className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             <input type="date" value={newCloseDate} onChange={e => setNewCloseDate(e.target.value)} required className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             <div className="flex gap-3 justify-end pt-2">
-              <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400">ยกเลิก</button>
+              <button type="button" onClick={closeAddModal} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400">ยกเลิก</button>
               <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">เพิ่มโครงการ</button>
             </div>
           </form>
