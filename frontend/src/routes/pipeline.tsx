@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 import { filterLeadsBySearch } from '../lib/lead-search';
-import { SALES_FUNNEL_STAGES, getPipelineColumnStyle } from '../lib/sales-funnel-stages';
+import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue } from '../lib/sales-funnel-stages';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -45,8 +45,8 @@ function PipelineComponent() {
   const [quotes, setQuotes] = useState<any[]>([]);
   const [stageFilter, setStageFilter] = useState<string>('All');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedOpp, setSelectedOpp] = useState<any>(null);
-  const [pendingStage, setPendingStage] = useState<{ opp: any; stage: string } | null>(null);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [pendingStage, setPendingStage] = useState<{ lead: any; stage: string } | null>(null);
   const [lostReason, setLostReason] = useState('');
   const [draggingId, setDraggingId] = useState('');
   const [error, setError] = useState('');
@@ -111,20 +111,37 @@ function PipelineComponent() {
     fetchData();
   }, []);
 
-  const leadById = (leadId: string) => leads.find(lead => lead._id === leadId);
-  const userName = (userId?: string) => users.find(user => user._id === userId)?.name || 'ไม่ระบุ';
-  const selectedLeadQuotes = useMemo(() => quotes.filter(quote => quote.leadId === selectedOpp?.leadId), [quotes, selectedOpp?.leadId]);
+  const pipelineLeads = useMemo(
+    () => leads.filter(lead => !lead.archived),
+    [leads]
+  );
 
-  const resolveOppStage = (opp: any) => leadById(opp.leadId)?.stage || opp.stage || 'Call';
+  const oppByLeadId = useMemo(() => {
+    const map = new Map<string, any>();
+    opportunities.forEach(opp => {
+      if (opp.leadId) map.set(opp.leadId, opp);
+    });
+    return map;
+  }, [opportunities]);
+
+  const resolveLeadStage = (lead: any) => normalizeLeadStage(lead?.stage);
+
+  const selectedOpp = selectedLead ? oppByLeadId.get(selectedLead._id) || null : null;
+  const selectedLeadQuotes = useMemo(
+    () => quotes.filter(quote => quote.leadId === selectedLead?._id),
+    [quotes, selectedLead?._id]
+  );
 
   const visibleStages = useMemo(
     () => (stageFilter === 'All' ? STAGES : STAGES.filter(stage => stage.id === stageFilter)),
     [stageFilter]
   );
 
-  const calculateStageSum = (stageId: string) => opportunities
-    .filter(opp => resolveOppStage(opp) === stageId)
-    .reduce((acc, curr) => acc + (curr.value || 0), 0);
+  const userName = (userId?: string) => users.find(user => user._id === userId)?.name || 'ไม่ระบุ';
+
+  const calculateStageSum = (stageId: string) => pipelineLeads
+    .filter(lead => resolveLeadStage(lead) === stageId)
+    .reduce((acc, lead) => acc + resolveLeadPipelineValue(lead._id, stageId as any, opportunities, quotes), 0);
 
   const handleCreateOpp = (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,16 +170,13 @@ function PipelineComponent() {
       .catch(err => setError(err.message || 'สร้าง opportunity ไม่สำเร็จ'));
   };
 
-  const updateStage = (opp: any, stage: string, reason?: string) => {
+  const updateLeadStage = (lead: any, stage: string, reason?: string) => {
     if (!canManagePipeline) return;
-    apiJson(`/api/opportunities/${opp._id}/stage`, {
+    apiJson(`/api/leads/${lead._id}`, {
       stage,
-      lostReason: stage === 'Lost' ? reason : undefined,
-      reason: stage !== 'Lost' ? reason : undefined
+      transferReason: reason,
     }, { method: 'PUT' })
-      .then(updated => {
-        setOpportunities(prev => prev.map(item => item._id === opp._id ? updated : item));
-        setSelectedOpp((current: any) => current?._id === opp._id ? { ...current, ...updated } : current);
+      .then(() => {
         setPendingStage(null);
         setLostReason('');
         fetchData();
@@ -170,28 +184,27 @@ function PipelineComponent() {
       .catch(err => setError(err.message || 'อัปเดต stage ไม่สำเร็จ'));
   };
 
-  const handleStageChange = (opp: any, stage: string) => {
-    if (!canManagePipeline || stage === resolveOppStage(opp)) return;
+  const handleStageChange = (lead: any, stage: string) => {
+    if (!canManagePipeline || stage === resolveLeadStage(lead)) return;
     if (stage === 'Lost') {
-      setPendingStage({ opp, stage });
+      setPendingStage({ lead, stage });
       setLostReason('');
       return;
     }
-    updateStage(opp, stage);
+    updateLeadStage(lead, stage);
   };
 
   const handleDrop = (stage: string) => {
     if (!canManagePipeline) return;
-    const opp = opportunities.find(item => item._id === draggingId);
+    const lead = pipelineLeads.find(item => item._id === draggingId);
     setDraggingId('');
-    if (opp) handleStageChange(opp, stage);
+    if (lead) handleStageChange(lead, stage);
   };
 
   const saveOpportunity = (patch: Record<string, unknown>) => {
     if (!selectedOpp || !canManagePipeline) return;
     apiJson(`/api/opportunities/${selectedOpp._id}`, patch, { method: 'PUT' })
       .then(updated => {
-        setSelectedOpp({ ...selectedOpp, ...updated });
         setOpportunities(prev => prev.map(item => item._id === selectedOpp._id ? updated : item));
         fetchData();
       })
@@ -207,8 +220,8 @@ function PipelineComponent() {
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             {canManagePipeline
-              ? 'ติดตามเป้าหมายการขาย มูลค่า forecast และประวัติ stage ของแต่ละดีล'
-              : 'ดูสถานะดีลตามที่อัปเดตจากหน้า Leads & โรงเรียน — เปลี่ยนสถานะได้ที่หน้า Leads เท่านั้น'}
+              ? 'ติดตาม Lead/โรงเรียนตามสถานะการขาย — ลากหรือเปลี่ยนสเตจได้ (Manager+) · มูลค่าจากดีล/ใบเสนอราคาเมื่อมี'
+              : 'ดู Lead/โรงเรียนตามสถานะการขาย — เปลี่ยนสถานะได้ที่หน้า Leads & โรงเรียน'}
           </p>
         </div>
         {canManagePipeline && (
@@ -255,7 +268,7 @@ function PipelineComponent() {
 
       <div className="flex gap-4 overflow-x-auto pb-4 items-start select-none">
         {visibleStages.map(stage => {
-          const stageOpps = opportunities.filter(opp => resolveOppStage(opp) === stage.id);
+          const stageLeads = pipelineLeads.filter(lead => resolveLeadStage(lead) === stage.id);
           return (
             <div
               key={stage.id}
@@ -266,47 +279,57 @@ function PipelineComponent() {
               <div className={`p-3 rounded-xl border flex flex-col gap-1 ${stage.color}`}>
                 <span className="text-[10.5px] font-black uppercase tracking-wider block">{stage.label}</span>
                 <div className="flex justify-between items-center mt-1">
-                  <span className="text-[11px] font-semibold text-slate-400">{stageOpps.length} ดีล</span>
+                  <span className="text-[11px] font-semibold text-slate-400">{stageLeads.length} Lead</span>
                   <span className="text-xs font-black text-slate-200">{formatMoney(calculateStageSum(stage.id))} ฿</span>
                 </div>
               </div>
 
               <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                {stageOpps.map(opp => (
+                {stageLeads.map(lead => {
+                  const opp = oppByLeadId.get(lead._id);
+                  const value = resolveLeadPipelineValue(lead._id, stage.id as any, opportunities, quotes);
+                  return (
                   <button
-                    key={opp._id}
+                    key={lead._id}
                     draggable={canManagePipeline}
-                    onDragStart={() => canManagePipeline && setDraggingId(opp._id)}
-                    onClick={() => setSelectedOpp(opp)}
+                    onDragStart={() => canManagePipeline && setDraggingId(lead._id)}
+                    onClick={() => setSelectedLead(lead)}
                     className={`w-full p-4 rounded-xl border border-slate-800/80 bg-[#090d16]/30 hover:border-slate-700 transition-all space-y-3 text-left ${canManagePipeline ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
                   >
                     <div>
                       <span className="inline-flex items-center gap-0.5 text-[9.5px] text-slate-500">
-                        <Building size={10} /> {leadById(opp.leadId)?.schoolName || 'ไม่ระบุโรงเรียน'}
+                        <Building size={10} /> {lead.zone || 'ไม่ระบุโซน'}
                       </span>
-                      <h4 className="text-xs font-bold text-slate-200 mt-1.5 line-clamp-2 leading-relaxed">{opp.title}</h4>
+                      <h4 className="text-xs font-bold text-slate-200 mt-1.5 line-clamp-2 leading-relaxed">{lead.schoolName}</h4>
+                      {opp?.title && opp.title !== `ดีล ${lead.schoolName}` && (
+                        <p className="text-[10px] text-slate-500 mt-1 line-clamp-1">{opp.title}</p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-[10.5px] text-slate-400">
                       <span className="flex items-center gap-0.5 text-indigo-400 font-bold">
-                        <DollarSign size={10} /> {formatMoney(opp.value)} ฿
+                        <DollarSign size={10} /> {formatMoney(value)} ฿
                       </span>
-                      <span className="flex items-center gap-0.5 text-slate-500">
-                        <Calendar size={10} /> {new Date(opp.closeDate).toLocaleDateString('th-TH')}
-                      </span>
+                      {opp?.closeDate ? (
+                        <span className="flex items-center gap-0.5 text-slate-500">
+                          <Calendar size={10} /> {new Date(opp.closeDate).toLocaleDateString('th-TH')}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">{lead.status || 'Lead'}</span>
+                      )}
                       <span className="flex items-center gap-0.5 text-emerald-400">
-                        <TrendingUp size={10} /> {opp.probability ?? 20}%
+                        <TrendingUp size={10} /> {opp?.probability ?? 20}%
                       </span>
-                      <span className="text-slate-500">{userName(opp.assignedTo)}</span>
+                      <span className="text-slate-500">{userName(lead.assignedTo)}</span>
                     </div>
 
                     {canManagePipeline && (
                       <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
                         <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest">ย้ายสเตจ</span>
                         <select
-                          value={resolveOppStage(opp)}
+                          value={resolveLeadStage(lead)}
                           onClick={e => e.stopPropagation()}
-                          onChange={(e) => handleStageChange(opp, e.target.value)}
+                          onChange={(e) => handleStageChange(lead, e.target.value)}
                           className="px-2 py-1 rounded border border-slate-800 bg-[#090d16] text-[10px] text-slate-300 focus:outline-none cursor-pointer"
                         >
                           {STAGES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
@@ -314,10 +337,11 @@ function PipelineComponent() {
                       </div>
                     )}
                   </button>
-                ))}
-                {stageOpps.length === 0 && (
+                  );
+                })}
+                {stageLeads.length === 0 && (
                   <div className="py-12 border border-dashed border-slate-800 rounded-xl text-center text-slate-500 text-[10.5px]">
-                    {canManagePipeline ? 'ลากดีลมาวางในระยะนี้ได้' : 'ยังไม่มีดีลในสถานะนี้'}
+                    {canManagePipeline ? 'ลาก Lead มาวางในระยะนี้ได้' : 'ยังไม่มี Lead ในสถานะนี้'}
                   </div>
                 )}
               </div>
@@ -388,19 +412,20 @@ function PipelineComponent() {
         </div>
       )}
 
-      {selectedOpp && (
+      {selectedLead && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-100">{selectedOpp.title}</h3>
-                <p className="text-xs text-slate-400 mt-1">{leadById(selectedOpp.leadId)?.schoolName} · {userName(selectedOpp.assignedTo)}</p>
-                <p className="text-[10px] text-indigo-300 mt-1">สถานะการขาย: {STAGES.find(item => item.id === resolveOppStage(selectedOpp))?.label || resolveOppStage(selectedOpp)}</p>
+                <h3 className="text-lg font-semibold text-slate-100">{selectedLead.schoolName}</h3>
+                <p className="text-xs text-slate-400 mt-1">{selectedLead.zone} · {userName(selectedLead.assignedTo)}</p>
+                <p className="text-[10px] text-indigo-300 mt-1">สถานะการขาย: {STAGES.find(item => item.id === resolveLeadStage(selectedLead))?.label || resolveLeadStage(selectedLead)}</p>
+                {selectedOpp && <p className="text-[10px] text-slate-500 mt-1">ดีล: {selectedOpp.title}</p>}
               </div>
-              <button onClick={() => setSelectedOpp(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button>
+              <button onClick={() => setSelectedLead(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button>
             </div>
 
-            {canManagePipeline ? (
+            {selectedOpp && canManagePipeline ? (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <input defaultValue={selectedOpp.title} onBlur={e => e.target.value !== selectedOpp.title && saveOpportunity({ title: e.target.value })} className="md:col-span-2 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                 <input type="number" defaultValue={selectedOpp.value} onBlur={e => saveOpportunity({ value: Number(e.target.value) || 0 })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
@@ -410,15 +435,20 @@ function PipelineComponent() {
                   {users.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
                 </select>
               </div>
-            ) : (
+            ) : selectedOpp ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-300">
                 <div className="p-3 rounded-lg border border-slate-800 bg-[#121826]/40">มูลค่า {formatMoney(selectedOpp.value)} ฿</div>
                 <div className="p-3 rounded-lg border border-slate-800 bg-[#121826]/40">Probability {selectedOpp.probability ?? 20}%</div>
                 <div className="p-3 rounded-lg border border-slate-800 bg-[#121826]/40">ปิด {new Date(selectedOpp.closeDate).toLocaleDateString('th-TH')}</div>
                 <div className="p-3 rounded-lg border border-slate-800 bg-[#121826]/40">{userName(selectedOpp.assignedTo)}</div>
               </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-slate-800 bg-[#121826]/40 text-xs text-slate-400">
+                ยังไม่มี Opportunity สำหรับ Lead นี้ — มูลค่าจะแสดงเมื่อสร้างดีลหรือใบเสนอราคา
+              </div>
             )}
 
+            {selectedOpp && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl border border-slate-800 bg-[#121826]/40">
                 <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5"><History size={13} /> Stage History</h4>
@@ -461,8 +491,9 @@ function PipelineComponent() {
                 </div>
               </div>
             </div>
+            )}
 
-            {selectedOpp.lostReason && (
+            {selectedOpp?.lostReason && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
                 Lost reason: {selectedOpp.lostReason}
               </div>
@@ -476,7 +507,7 @@ function PipelineComponent() {
           <form
             onSubmit={e => {
               e.preventDefault();
-              updateStage(pendingStage.opp, pendingStage.stage, lostReason);
+              updateLeadStage(pendingStage.lead, pendingStage.stage, lostReason);
             }}
             className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
           >

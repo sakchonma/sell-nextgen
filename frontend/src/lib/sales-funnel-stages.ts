@@ -43,3 +43,47 @@ export function getPipelineColumnStyle(stage: string) {
   if (stage === 'Call') return 'border-blue-500/20 text-blue-400 bg-blue-500/5';
   return 'border-slate-500/20 text-slate-400 bg-slate-500/5';
 }
+
+const LEGACY_LEAD_STAGE_MAP: Record<string, SalesFunnelStage> = {
+  'New Lead': 'Call',
+  Contacted: 'Call',
+  Interested: 'Meeting',
+  'Demo Scheduled': 'DemoWorkshop',
+  'Proposal Sent': 'Quotation',
+  'Pilot/Trial': 'Quotation',
+  'Closed Won': 'Won',
+  'Closed Lost': 'Lost',
+};
+
+export function normalizeLeadStage(value: unknown): SalesFunnelStage {
+  if (typeof value !== 'string' || !value.trim()) return 'Call';
+  if ((SALES_FUNNEL_STAGE_CODES as readonly string[]).includes(value)) return value as SalesFunnelStage;
+  return LEGACY_LEAD_STAGE_MAP[value] || 'Call';
+}
+
+export function resolveLeadPipelineValue(
+  leadId: string,
+  stage: SalesFunnelStage,
+  opportunities: Array<{ leadId?: string; stage?: string; value?: number }>,
+  quotes: Array<{ leadId?: string; status?: string; totalAmount?: number; createdAt?: string | Date }>,
+) {
+  const opp = opportunities.find(item => item.leadId === leadId);
+  const leadQuotes = quotes
+    .filter(quote => quote.leadId === leadId)
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+  if (stage === 'Quotation') {
+    const latestQuote = leadQuotes[0];
+    if (latestQuote?.totalAmount != null) return Number(latestQuote.totalAmount) || 0;
+  }
+
+  if (stage === 'Won') {
+    if (normalizeLeadStage(opp?.stage) === 'Won' && opp?.value != null) return Number(opp.value) || 0;
+    const approvedQuote = leadQuotes.find(quote => quote.status === 'Approved');
+    if (approvedQuote?.totalAmount != null) return Number(approvedQuote.totalAmount) || 0;
+  }
+
+  if (opp?.value != null) return Number(opp.value) || 0;
+  if (leadQuotes[0]?.totalAmount != null) return Number(leadQuotes[0].totalAmount) || 0;
+  return 0;
+}
