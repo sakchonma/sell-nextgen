@@ -22,7 +22,7 @@ import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
 
 const LEAD_STATUS_OPTIONS = ['Cold', 'Warm', 'Hot', 'Customer'];
-const LEAD_STAGE_OPTIONS = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'];
+import { SALES_FUNNEL_STAGE_OPTIONS } from '../lib/sales-funnel-stages';
 
 function noteKey(note: { createdAt: string | Date; author: string }) {
   return `${new Date(note.createdAt).toISOString()}|${note.author}`;
@@ -77,7 +77,7 @@ function LeadDetailComponent() {
     remarks: '',
     legacySaleName: '',
     status: 'Cold',
-    stage: 'New Lead',
+    stage: 'Call',
     score: '',
     source: '',
     campaign: ''
@@ -105,7 +105,7 @@ function LeadDetailComponent() {
           remarks: data.remarks || '',
           legacySaleName: data.legacySaleName || '',
           status: data.status || 'Cold',
-          stage: data.stage || 'New Lead',
+          stage: data.stage || 'Call',
           score: data.score !== undefined && data.score !== null ? String(data.score) : '',
           source: data.source || '',
           campaign: data.campaign || ''
@@ -590,8 +590,9 @@ function LeadDetailComponent() {
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     Stage
+                    <label className="text-[10px] text-slate-500 font-semibold">สถานะการขาย</label>
                     <select value={editProfile.stage} onChange={e => handleEditProfileChange('stage', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                      {LEAD_STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                      {SALES_FUNNEL_STAGE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">

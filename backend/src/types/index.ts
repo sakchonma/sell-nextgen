@@ -55,7 +55,7 @@ export interface Lead {
   address: string;
   zone: string;
   status: 'Cold' | 'Warm' | 'Hot' | 'Customer';
-  stage: 'New Lead' | 'Contacted' | 'Interested' | 'Demo Scheduled' | 'Proposal Sent' | 'Pilot/Trial' | 'Closed Won' | 'Closed Lost';
+  stage: 'Call' | 'Meeting' | 'Presentation' | 'DemoWorkshop' | 'Quotation' | 'Won' | 'Lost';
   score: number;
   gradeLevels?: string;
   educationAuthority?: string;
@@ -106,7 +106,7 @@ export interface Opportunity {
   _id: string;
   leadId: string;
   title: string;
-  stage: 'Qualified' | 'Proposal' | 'Demo' | 'Negotiation' | 'Won' | 'Lost';
+  stage: 'Call' | 'Meeting' | 'Presentation' | 'DemoWorkshop' | 'Quotation' | 'Won' | 'Lost';
   value: number;
   closeDate: Date;
   assignedTo: string;

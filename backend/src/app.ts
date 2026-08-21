@@ -43,6 +43,18 @@ import {
   listActivityTypes,
   updateActivityType
 } from './services/activity-types.service.js';
+import {
+  buildActivityBreakdown,
+  buildSalesFunnelReport,
+  syncLeadStageToOpportunity,
+  syncOpportunityStageToLead,
+} from './services/sales-funnel-sync.service.js';
+import {
+  defaultProbabilityForStage,
+  normalizeLeadStage,
+  normalizeOpportunityStage,
+  salesFunnelStageSchemaValues,
+} from './config/sales-funnel-stages.js';
 import type { ActivityTypeScope } from './types/index.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
 import { hashPassword, validatePasswordPolicy, verifyPassword } from './utils/password.js';
@@ -387,11 +399,11 @@ const createRequestBodySchema = z.object({
   message: 'วันและเวลาสิ้นสุดต้องมากกว่าวันและเวลาเริ่มต้น'
 });
 
-const opportunityStageSchema = z.enum(['Qualified', 'Presentation', 'Demo', 'Proposal', 'Negotiation', 'Won', 'Lost']);
+const opportunityStageSchema = z.enum(salesFunnelStageSchemaValues);
 const createOpportunityBodySchema = z.object({
   leadId: idSchema,
   title: nonEmptyTextSchema,
-  stage: opportunityStageSchema.default('Qualified'),
+  stage: opportunityStageSchema.default('Call'),
   value: moneySchema.default(0),
   closeDate: dateStringSchema,
   assignedTo: idSchema.optional(),
@@ -627,7 +639,7 @@ const leadAttachmentSchema = z.object({
 }).strict();
 
 const leadStatusSchema = z.enum(['Cold', 'Warm', 'Hot', 'Customer']);
-const leadStageSchema = z.enum(['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost']);
+const leadStageSchema = z.enum(salesFunnelStageSchemaValues);
 const optionalNumberSchema = z.coerce.number().min(0).optional();
 const optionalDateTextSchema = z.string().trim().optional().refine(value => !value || !Number.isNaN(Date.parse(value)), {
   message: 'ต้องเป็นวันที่หรือเวลาในรูปแบบที่ถูกต้อง'
@@ -637,7 +649,7 @@ const createLeadBodySchema = z.object({
   address: optionalTextSchema,
   zone: optionalTextSchema,
   status: leadStatusSchema.default('Cold'),
-  stage: leadStageSchema.default('New Lead'),
+  stage: leadStageSchema.default('Call'),
   score: z.coerce.number().min(0).max(100).default(10),
   gradeLevels: optionalTextSchema,
   educationAuthority: optionalTextSchema,
@@ -1002,7 +1014,14 @@ function findLeadDuplicates(leads: any[], candidate: any, excludeId?: string) {
 function hydrateLeadForResponse(lead: any) {
   return {
     ...lead,
-    stage: lead.stage || 'New Lead'
+    stage: normalizeLeadStage(lead.stage)
+  };
+}
+
+function hydrateOpportunityForResponse(opp: any) {
+  return {
+    ...opp,
+    stage: normalizeOpportunityStage(opp.stage)
   };
 }
 
@@ -1747,7 +1766,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       )
     : [];
 
-  const wonOpps = opportunities.filter((opp: any) => opp.stage === 'Won');
+  const wonOpps = opportunities.filter((opp: any) => normalizeOpportunityStage(opp.stage) === 'Won');
   const approvedQuotes = quotes.filter((quote: any) => quote.status === 'Approved');
   const pendingQuotes = quotes.filter((quote: any) => quote.status === 'PendingApproval');
   const rejectedQuotes = quotes.filter((quote: any) => quote.status === 'Rejected');
@@ -1780,8 +1799,8 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
         zone: user.zone || '-',
         leads: userLeads.length,
         quotes: userQuotes.length,
-        won: userOpps.filter((opp: any) => opp.stage === 'Won').length,
-        wonValue: userOpps.filter((opp: any) => opp.stage === 'Won').reduce((sum: number, opp: any) => sum + Number(opp.value || 0), 0)
+        won: userOpps.filter((opp: any) => normalizeOpportunityStage(opp.stage) === 'Won').length,
+        wonValue: userOpps.filter((opp: any) => normalizeOpportunityStage(opp.stage) === 'Won').reduce((sum: number, opp: any) => sum + Number(opp.value || 0), 0)
       };
     })
     .filter((row: any) => row.leads || row.quotes || row.won);
@@ -1796,7 +1815,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     breached: request.slaDueAt ? asDate(request.slaDueAt).getTime() < Date.now() && request.status !== 'Completed' : false
   }));
   const salesForecast = opportunities
-    .filter((opp: any) => !['Won', 'Lost'].includes(opp.stage))
+    .filter((opp: any) => !['Won', 'Lost'].includes(normalizeOpportunityStage(opp.stage)))
     .reduce((acc: any[], opp: any) => {
       const owner = userMap.get(opp.assignedTo);
       const ownerId = opp.assignedTo || 'unassigned';
@@ -1820,6 +1839,11 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       return acc;
     }, [])
     .sort((a: any, b: any) => b.weightedForecast - a.weightedForecast);
+
+  const normalizedLeads = leads.map(lead => ({ ...lead, stage: normalizeLeadStage(lead.stage) }));
+  const normalizedOpportunities = opportunities.map(opp => ({ ...opp, stage: normalizeOpportunityStage(opp.stage) }));
+  const salesFunnel = buildSalesFunnelReport(normalizedLeads as any[], normalizedOpportunities as any[], quotes);
+  const activityBreakdown = buildActivityBreakdown(tasksByDate, quotes, normalizedOpportunities as any[]);
 
   res.json({
     scope: currentUser.rank >= 4 ? 'team' : 'personal',
@@ -1846,6 +1870,8 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       quotes: quotes.length,
       won: wonOpps.length
     },
+    salesFunnel,
+    activityBreakdown,
     quoteApproval: {
       approved: approvedQuotes.length,
       pending: pendingQuotes.length,
@@ -1941,7 +1967,7 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     }
     if (zone !== 'All' && lead.zone !== zone) return false;
     if (status !== 'All' && lead.status !== status) return false;
-    if (stage !== 'All' && lead.stage !== stage) return false;
+    if (stage !== 'All' && normalizeLeadStage(lead.stage) !== stage) return false;
     if (assignedTo !== 'All' && lead.assignedTo !== assignedTo) return false;
     if (minScore !== undefined && lead.score < Number(minScore)) return false;
     if (maxScore !== undefined && lead.score > Number(maxScore)) return false;
@@ -1987,7 +2013,7 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
       lead.address,
       lead.zone,
       lead.status,
-      lead.stage || 'New Lead',
+      normalizeLeadStage(lead.stage),
       lead.score,
       lead.gradeLevels,
       lead.educationAuthority,
@@ -2179,24 +2205,24 @@ function provinceToZone(province?: string) {
 
 function mapLegacyStepToLeadStage(step?: string) {
   const value = String(step || '').toLowerCase();
-  if (!value) return 'New Lead';
-  if (value.includes('ปิดกิจการ') || value.includes('ไม่สนใจ') || value.includes('closed lost')) return 'Closed Lost';
-  if (value.includes('won') || value.includes('ปิดการขาย')) return 'Closed Won';
-  if (value.includes('trial') || value.includes('pilot') || value.includes('ทดลอง')) return 'Pilot/Trial';
-  if (value.includes('proposal') || value.includes('เสนอราคา')) return 'Proposal Sent';
-  if (value.includes('present') || value.includes('พรีเซน') || value.includes('demo') || value.includes('สาธิต')) return 'Demo Scheduled';
-  if (value.includes('สนใจ')) return 'Interested';
-  if (value.includes('โทร') || value.includes('ติดต่อ') || value.includes('ยื่น') || value.includes('email') || value.includes('อีเมล')) return 'Contacted';
-  return 'New Lead';
+  if (!value) return 'Call';
+  if (value.includes('ปิดกิจการ') || value.includes('ไม่สนใจ') || value.includes('closed lost') || value.includes('lost')) return 'Lost';
+  if (value.includes('won') || value.includes('ปิดการขาย')) return 'Won';
+  if (value.includes('trial') || value.includes('pilot') || value.includes('ทดลอง') || value.includes('proposal') || value.includes('เสนอราคา') || value.includes('quotation')) return 'Quotation';
+  if (value.includes('present') || value.includes('พรีเซน')) return 'Presentation';
+  if (value.includes('demo') || value.includes('workshop') || value.includes('สาธิต')) return 'DemoWorkshop';
+  if (value.includes('นัด') || value.includes('meeting') || value.includes('สนใจ')) return 'Meeting';
+  if (value.includes('โทร') || value.includes('call') || value.includes('ติดต่อ') || value.includes('ยื่น') || value.includes('email') || value.includes('อีเมล')) return 'Call';
+  return 'Call';
 }
 
 function normalizeLeadStatus(status?: string, stage?: string) {
   const raw = String(status || '').trim();
   if (['Cold', 'Warm', 'Hot', 'Customer'].includes(raw)) return raw;
-  const mappedStage = mapLegacyStepToLeadStage(stage);
-  if (mappedStage === 'Closed Won') return 'Customer';
-  if (['Demo Scheduled', 'Proposal Sent', 'Pilot/Trial'].includes(mappedStage)) return 'Hot';
-  if (['Contacted', 'Interested'].includes(mappedStage)) return 'Warm';
+  const mappedStage = normalizeLeadStage(mapLegacyStepToLeadStage(stage));
+  if (mappedStage === 'Won') return 'Customer';
+  if (['DemoWorkshop', 'Quotation'].includes(mappedStage)) return 'Hot';
+  if (['Meeting', 'Presentation'].includes(mappedStage)) return 'Warm';
   return 'Cold';
 }
 
@@ -2209,9 +2235,11 @@ function buildLeadFromImportRow(row: Record<string, string>, index: number, curr
   const district = row['เขต'] || row.district || '';
   const province = row['จังหวัด'] || row.province || '';
   const legacyStep = row.stage || row['อยู่ในขั้นตอน'];
-  const stage = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'].includes(legacyStep)
-    ? legacyStep
-    : mapLegacyStepToLeadStage(legacyStep);
+  const stage = normalizeLeadStage(
+    salesFunnelStageSchemaValues.includes(legacyStep as any)
+      ? legacyStep
+      : mapLegacyStepToLeadStage(legacyStep)
+  );
   const status = normalizeLeadStatus(row.status || row['สถานะ'], legacyStep);
   const emailCell = row.email || row.contactEmail || row['อีเมล'];
   const email = emailFromCell(emailCell);
@@ -2238,7 +2266,7 @@ function buildLeadFromImportRow(row: Record<string, string>, index: number, curr
     zone: row.zone || provinceToZone(province),
     status,
     stage,
-    score: status === 'Hot' ? 85 : status === 'Warm' ? 60 : status === 'Customer' ? 100 : stage === 'Closed Lost' ? 0 : 10,
+    score: status === 'Hot' ? 85 : status === 'Warm' ? 60 : status === 'Customer' ? 100 : stage === 'Lost' ? 0 : 10,
     gradeLevels: row.gradeLevels || row['ระดับชั้น'] || undefined,
     educationAuthority: row.educationAuthority || row.__col_C || undefined,
     district: district || undefined,
@@ -2252,7 +2280,7 @@ function buildLeadFromImportRow(row: Record<string, string>, index: number, curr
     legacySaleName: row.legacySaleName || row.Sale || row.__col_Q || undefined,
     source: row.source || 'Excel Import',
     campaign: row.campaign || 'สรุปรายชื่อโรงเรียนกำลังดำเนินการ',
-    archived: stage === 'Closed Lost' && String(legacyStep || '').includes('ปิดกิจการ'),
+    archived: stage === 'Lost' && String(legacyStep || '').includes('ปิดกิจการ'),
     contacts: phone || email || contactName ? [{
       name: contactName || row.Sale || row.__col_Q || 'ผู้ติดต่อจากไฟล์นำเข้า',
       position: emailCell && !email ? emailCell : '',
@@ -2331,7 +2359,7 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
           address: leadDraft.address || existingDuplicate.address,
           zone: leadDraft.zone || existingDuplicate.zone,
           status: leadDraft.status || existingDuplicate.status,
-          stage: leadDraft.stage || existingDuplicate.stage || 'New Lead',
+          stage: normalizeLeadStage(leadDraft.stage || existingDuplicate.stage),
           score: leadDraft.score !== undefined ? leadDraft.score : existingDuplicate.score,
           gradeLevels: leadDraft.gradeLevels ?? existingDuplicate.gradeLevels,
           educationAuthority: leadDraft.educationAuthority ?? existingDuplicate.educationAuthority,
@@ -2427,7 +2455,7 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     address,
     zone,
     status: status || 'Cold',
-    stage: stage || 'New Lead',
+    stage: normalizeLeadStage(stage || 'Call'),
     score: Number(score) || 10,
     gradeLevels,
     educationAuthority,
@@ -2458,7 +2486,8 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
   };
 
   await Leads().insertOne(newLead as any);
-  res.status(201).json(newLead);
+  await syncLeadStageToOpportunity(newLead as any, undefined, currentUser._id, 'Initial lead stage');
+  res.status(201).json(hydrateLeadForResponse(newLead));
 });
 
 app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateLeadBodySchema), async (req, res) => {
@@ -2521,6 +2550,7 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
       }
     }
   }
+  const previousStage = normalizeLeadStage(lead.stage);
   const isTransfer = assignedTo && assignedTo !== lead.assignedTo;
   const assignmentHistory = isTransfer
     ? [
@@ -2540,7 +2570,7 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     address: address !== undefined ? address : lead.address,
     zone: zone !== undefined ? zone : lead.zone,
     status: status || lead.status,
-    stage: stage || lead.stage || 'New Lead',
+    stage: stage !== undefined ? normalizeLeadStage(stage) : previousStage,
     score: score !== undefined ? Number(score) : lead.score,
     gradeLevels: gradeLevels !== undefined ? gradeLevels : lead.gradeLevels,
     educationAuthority: educationAuthority !== undefined ? educationAuthority : lead.educationAuthority,
@@ -2577,6 +2607,9 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
   }
 
   await syncLeadAfterUpdate(lead, updatedLead, currentUser._id, notes || undefined);
+  if (updatedLead.stage !== previousStage) {
+    await syncLeadStageToOpportunity(updatedLead as any, previousStage, currentUser._id, transferReason);
+  }
   res.json(hydrateLeadForResponse(updatedLead));
 });
 
@@ -2782,17 +2815,6 @@ function userCanSeeOpportunity(user: any, opportunity: any) {
   return opportunity.assignedTo === user._id;
 }
 
-function defaultProbabilityForStage(stage: string) {
-  if (stage === 'Qualified') return 20;
-  if (stage === 'Presentation') return 30;
-  if (stage === 'Demo') return 55;
-  if (stage === 'Proposal') return 40;
-  if (stage === 'Negotiation') return 75;
-  if (stage === 'Won') return 100;
-  if (stage === 'Lost') return 0;
-  return 20;
-}
-
 app.get('/api/opportunities', requirePermission('managePipeline'), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
@@ -2800,7 +2822,7 @@ app.get('/api/opportunities', requirePermission('managePipeline'), async (req, r
     return;
   }
 
-  const opps = await findAll<any>(Opportunities());
+  const opps = (await findAll<any>(Opportunities())).map(hydrateOpportunityForResponse);
   if (currentUser.rank === 3) {
     const filtered = opps.filter(o => o.assignedTo === currentUser._id);
     res.json(filtered);
@@ -2837,7 +2859,7 @@ app.get('/api/opportunities/forecast', requirePermission('managePipeline'), asyn
     acc[ownerKey].dealCount += 1;
     acc[ownerKey].pipelineValue += Number(opp.value) || 0;
     acc[ownerKey].weightedForecast += weightedValue;
-    if (opp.stage === 'Won') acc[ownerKey].wonValue += Number(opp.value) || 0;
+    if (normalizeOpportunityStage(opp.stage) === 'Won') acc[ownerKey].wonValue += Number(opp.value) || 0;
     return acc;
   }, {});
   res.json(Object.values(summary).sort((a: any, b: any) => `${a.month}${a.ownerName}`.localeCompare(`${b.month}${b.ownerName}`)));
@@ -2876,18 +2898,19 @@ app.post('/api/opportunities', requirePermission('managePipeline'), validateBody
     return;
   }
   const ownerId = assignedTo || currentUser._id;
+  const nextStage = normalizeOpportunityStage(stage || 'Call');
   const newOpp = {
     _id: `o_${Date.now()}`,
     leadId,
     title,
-    stage: stage || 'Qualified',
+    stage: nextStage,
     value: Number(value) || 0,
     closeDate: new Date(closeDate),
     assignedTo: ownerId,
-    probability: probability ?? defaultProbabilityForStage(stage || 'Qualified'),
+    probability: probability ?? defaultProbabilityForStage(nextStage),
     quoteIds: quoteIds || [],
     stageHistory: [{
-      toStage: stage || 'Qualified',
+      toStage: nextStage,
       changedBy: currentUser._id,
       reason: 'Created opportunity',
       changedAt: new Date()
@@ -2897,6 +2920,7 @@ app.post('/api/opportunities', requirePermission('managePipeline'), validateBody
   };
 
   await Opportunities().insertOne(newOpp as any);
+  await syncOpportunityStageToLead(newOpp as any, currentUser._id, 'Created opportunity');
   await createAuditLog(req, currentUser, 'opportunity.create', 'opportunity', newOpp);
   res.status(201).json(newOpp);
 });
@@ -2942,21 +2966,22 @@ app.put('/api/opportunities/:id/stage', requirePermission('managePipeline'), val
   }
 
   const { stage, reason, lostReason, probability } = req.body;
+  const nextStage = normalizeOpportunityStage(stage);
   const stageHistory = [
     ...(opp.stageHistory || []),
     {
-      fromStage: opp.stage,
-      toStage: stage,
+      fromStage: normalizeOpportunityStage(opp.stage),
+      toStage: nextStage,
       changedBy: currentUser._id,
-      reason: stage === 'Lost' ? lostReason || reason : reason,
+      reason: nextStage === 'Lost' ? lostReason || reason : reason,
       changedAt: new Date()
     }
   ];
   const updatedOpp = {
     ...opp,
-    stage,
-    probability: probability ?? defaultProbabilityForStage(stage),
-    lostReason: stage === 'Lost' ? lostReason || reason : undefined,
+    stage: nextStage,
+    probability: probability ?? defaultProbabilityForStage(nextStage),
+    lostReason: nextStage === 'Lost' ? lostReason || reason : undefined,
     stageHistory,
     updatedAt: new Date()
   };
@@ -2971,9 +2996,12 @@ app.put('/api/opportunities/:id/stage', requirePermission('managePipeline'), val
   await createAuditLog(req, currentUser, 'opportunity.stage_change', 'opportunity', updatedOpp, {
     before: { stage: opp.stage, probability: opp.probability },
     after: { stage: updatedOpp.stage, probability: updatedOpp.probability },
-    reason: stage === 'Lost' ? lostReason || reason : reason
+    reason: nextStage === 'Lost' ? lostReason || reason : reason
   });
-  res.json(updatedOpp);
+  if (currentUser.rank >= 4) {
+    await syncOpportunityStageToLead(updatedOpp as any, currentUser._id, reason);
+  }
+  res.json(hydrateOpportunityForResponse(updatedOpp));
 });
 
 // ------------------------------------------------------------------------------

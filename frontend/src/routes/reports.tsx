@@ -70,6 +70,11 @@ function ReportsComponent() {
   const leadById = (id?: string) => leads.find(lead => lead._id === id);
   const metrics = reportSummary?.metrics || {};
   const hasDateFilter = Boolean(dateFrom || dateTo);
+  const salesFunnelStages = useMemo(
+    () => (Array.isArray(reportSummary?.salesFunnel?.stages) ? reportSummary.salesFunnel.stages : []),
+    [reportSummary?.salesFunnel?.stages]
+  );
+  const activityBreakdown = reportSummary?.activityBreakdown;
 
   const cards = useMemo(() => [
     {
@@ -152,6 +157,17 @@ function ReportsComponent() {
       ['requestSla', 'breached', reportSummary?.requestSla?.breached ?? 0],
       ['taskReport', 'overdueNow', reportSummary?.taskReport?.overdueNow ?? 0],
       ['taskReport', 'overdueInRange', reportSummary?.taskReport?.overdueInRange ?? 0],
+      ...(salesFunnelStages.map((row: any) => ['salesFunnel', `${row.labelTh || row.label}_count`, row.count ?? 0])),
+      ...(salesFunnelStages.map((row: any) => ['salesFunnel', `${row.labelTh || row.label}_value`, row.value ?? 0])),
+      ...(salesFunnelStages.map((row: any) => ['salesFunnel', `${row.labelTh || row.label}_conversion`, row.conversionToNextPercent ?? 0])),
+      ['activityBreakdown', 'Call', activityBreakdown?.tasks?.Call ?? 0],
+      ['activityBreakdown', 'Meeting', activityBreakdown?.tasks?.Meeting ?? 0],
+      ['activityBreakdown', 'Presentation', activityBreakdown?.tasks?.Presentation ?? 0],
+      ['activityBreakdown', 'DemoWorkshop', activityBreakdown?.tasks?.DemoWorkshop ?? 0],
+      ['activityBreakdown', 'Quotation_count', activityBreakdown?.quotation?.count ?? 0],
+      ['activityBreakdown', 'Quotation_approvedValue', activityBreakdown?.quotation?.approvedValue ?? 0],
+      ['activityBreakdown', 'Won_count', activityBreakdown?.won?.count ?? 0],
+      ['activityBreakdown', 'Won_value', activityBreakdown?.won?.value ?? 0],
       ...((reportSummary?.salesForecast || []).map((row: any) => ['salesForecast', row.ownerName, row.weightedForecast])),
       ...((reportSummary?.salesPerformance || []).map((row: any) => ['salesPerformance', row.name, row.wonValue])),
     ];
@@ -273,7 +289,70 @@ function ReportsComponent() {
       </div>
 
       <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
-        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Conversion funnel</h3>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุป Sales Funnel</h3>
+            <p className="text-[11px] text-slate-500 mt-1">จำนวน Lead และมูลค่าตามสถานะการขายปัจจุบัน</p>
+          </div>
+          <div className="text-xs text-slate-400">
+            Pipeline {Number(reportSummary?.salesFunnel?.totals?.pipelineValue || 0).toLocaleString('th-TH')} ฿ · Won {Number(reportSummary?.salesFunnel?.totals?.wonValue || 0).toLocaleString('th-TH')} ฿
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {salesFunnelStages.filter((row: any) => row.code !== 'Lost').map((row: any) => (
+            <div key={row.code} className="p-4 rounded-xl border border-slate-800 bg-[#121826]/40">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{row.labelTh || row.label}</span>
+                <GitBranch size={15} className="text-indigo-400" />
+              </div>
+              <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : row.count || 0}</span>
+              <span className="block mt-1 text-xs text-slate-400">{Number(row.value || 0).toLocaleString('th-TH')} ฿</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {salesFunnelStages.slice(0, -2).map((row: any, index: number) => {
+            const next = salesFunnelStages[index + 1];
+            if (!next || next.code === 'Lost') return null;
+            return (
+              <span key={row.code} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-800 bg-[#090d16] text-[10px] text-slate-400">
+                {row.labelTh || row.label} → {next.labelTh || next.label}: <strong className="text-slate-200">{row.conversionToNextPercent ?? 0}%</strong>
+              </span>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
+        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุปกิจกรรมตามประเภท</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {[
+            ['Call', activityBreakdown?.tasks?.Call ?? 0],
+            ['นัดหมาย', activityBreakdown?.tasks?.Meeting ?? 0],
+            ['Presentation', activityBreakdown?.tasks?.Presentation ?? 0],
+            ['Demo/Workshop', activityBreakdown?.tasks?.DemoWorkshop ?? 0],
+          ].map(([label, value]) => (
+            <div key={label} className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">{label}</span>
+              <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : value}</span>
+              <span className="block mt-1 text-[10px] text-slate-500">Task ในช่วง</span>
+            </div>
+          ))}
+          <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Quotation</span>
+            <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : activityBreakdown?.quotation?.count ?? 0}</span>
+            <span className="block mt-1 text-[10px] text-slate-500">อนุมัติ {Number(activityBreakdown?.quotation?.approvedValue || 0).toLocaleString('th-TH')} ฿</span>
+          </div>
+          <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">Won</span>
+            <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : activityBreakdown?.won?.count ?? 0}</span>
+            <span className="block mt-1 text-[10px] text-slate-500">{Number(activityBreakdown?.won?.value || 0).toLocaleString('th-TH')} ฿</span>
+          </div>
+        </div>
+      </section>
+
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
+        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">ภาพรวม Lead → Quote → Won</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {[
             ['Leads', reportSummary?.funnel?.leads || 0, '/leads'],

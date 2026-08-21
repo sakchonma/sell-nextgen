@@ -13,9 +13,9 @@ import {
   Loader2
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle } from '../lib/sales-funnel-stages';
 
 const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
-const LEAD_STAGE_OPTIONS = ['New Lead', 'Contacted', 'Interested', 'Demo Scheduled', 'Proposal Sent', 'Pilot/Trial', 'Closed Won', 'Closed Lost'];
 const LEADS_PAGE_SIZE = 20;
 
 export const Route = createRoute({
@@ -39,7 +39,7 @@ function LeadsIndexComponent() {
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadAddress, setNewLeadAddress] = useState('');
   const [newLeadZone, setNewLeadZone] = useState('ภาคเหนือ');
-  const [newLeadStage, setNewLeadStage] = useState('New Lead');
+  const [newLeadStage, setNewLeadStage] = useState('Call');
   const [newLeadSource, setNewLeadSource] = useState('Outbound');
   const [newLeadCampaign, setNewLeadCampaign] = useState('');
   const [leadError, setLeadError] = useState('');
@@ -137,7 +137,7 @@ function LeadsIndexComponent() {
         setShowAddModal(false);
         setNewLeadName('');
         setNewLeadAddress('');
-        setNewLeadStage('New Lead');
+        setNewLeadStage('Call');
         setNewLeadCampaign('');
         fetchLeads('reset');
       })
@@ -186,8 +186,8 @@ function LeadsIndexComponent() {
   };
 
   const handleStageChange = (lead: any, stage: string) => {
-    if ((lead.stage || 'New Lead') === stage) return;
-    const previousStage = lead.stage || 'New Lead';
+    if ((lead.stage || 'Call') === stage) return;
+    const previousStage = lead.stage || 'Call';
     setUpdatingLeadId(lead._id);
     setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage } : item));
 
@@ -209,15 +209,7 @@ function LeadsIndexComponent() {
     return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
   };
 
-  const getStageStyle = (stage: string) => {
-    if (stage === 'Closed Won') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
-    if (stage === 'Closed Lost') return 'bg-rose-500/10 text-rose-400 border-rose-500/25';
-    if (stage === 'Proposal Sent' || stage === 'Pilot/Trial') return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/25';
-    if (stage === 'Demo Scheduled') return 'bg-amber-500/10 text-amber-400 border-amber-500/25';
-    if (stage === 'Interested') return 'bg-sky-500/10 text-sky-400 border-sky-500/25';
-    if (stage === 'Contacted') return 'bg-blue-500/10 text-blue-400 border-blue-500/25';
-    return 'bg-slate-800 text-slate-400 border-slate-700';
-  };
+  const getStageStyle = (stage: string) => getSalesFunnelStageStyle(stage);
 
   const ownerName = (ownerId?: string) => users.find(item => item._id === ownerId)?.name || 'ไม่ระบุผู้ดูแล';
 
@@ -296,15 +288,15 @@ function LeadsIndexComponent() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 flex items-center gap-1"><Filter size={12} /> Stage:</span>
+          <span className="text-xs text-slate-500 flex items-center gap-1"><Filter size={12} /> สถานะการขาย:</span>
           <select
             value={selectedStageFilter}
             onChange={(e) => setSelectedStageFilter(e.target.value)}
             className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200 focus:outline-none"
           >
-            <option value="All">ทุก Stage</option>
-            {LEAD_STAGE_OPTIONS.map(stage => (
-              <option key={stage} value={stage}>{stage}</option>
+            <option value="All">ทุกสถานะ</option>
+            {SALES_FUNNEL_STAGE_OPTIONS.map(stage => (
+              <option key={stage.value} value={stage.value}>{stage.label}</option>
             ))}
           </select>
         </div>
@@ -377,13 +369,13 @@ function LeadsIndexComponent() {
                 </div>
                 <div className="relative">
                   <select
-                    value={LEAD_STAGE_OPTIONS.includes(lead.stage) ? lead.stage : 'New Lead'}
+                    value={SALES_FUNNEL_STAGE_OPTIONS.some(opt => opt.value === lead.stage) ? lead.stage : 'Call'}
                     onChange={(e) => handleStageChange(lead, e.target.value)}
                     disabled={updatingLeadId === lead._id}
-                    className={`appearance-none max-w-32 pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'New Lead')}`}
-                    title="เปลี่ยน Stage"
+                    className={`appearance-none max-w-36 pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'Call')}`}
+                    title="สถานะการขาย"
                   >
-                    {LEAD_STAGE_OPTIONS.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                    {SALES_FUNNEL_STAGE_OPTIONS.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
                   </select>
                   <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
                 </div>
@@ -481,13 +473,13 @@ function LeadsIndexComponent() {
             </div>
 
             <div>
-              <label className="block text-xs text-slate-400 font-semibold mb-1">Stage</label>
+              <label className="block text-xs text-slate-400 font-semibold mb-1">สถานะการขาย</label>
               <select
                 value={newLeadStage}
                 onChange={(e) => setNewLeadStage(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
               >
-                {LEAD_STAGE_OPTIONS.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                {SALES_FUNNEL_STAGE_OPTIONS.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
               </select>
             </div>
 
