@@ -50,6 +50,7 @@ function emptyFunnelStage(code: string) {
 function getFunnelDisplayLabel(row: { code?: string; label?: string; labelTh?: string }) {
   return row.labelTh || row.label || row.code || '-';
 }
+const MODAL_PAGE_SIZE = 15;
 const ACTIVITY_PAGE_SIZE = 10;
 
 function formatFilterDate(value: string) {
