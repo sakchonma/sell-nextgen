@@ -121,6 +121,51 @@ function ReportsComponent() {
     [visibleFunnelStages]
   );
 
+  const funnelRows = useMemo(
+    () => [visibleFunnelStages.slice(0, 3), visibleFunnelStages.slice(3, 6)],
+    [visibleFunnelStages]
+  );
+
+  const renderFunnelCard = (row: any, showArrow: boolean) => {
+    const barWidth = Math.max(8, Math.round((Number(row.count || 0) / funnelMaxCount) * 100));
+    const stageTone = getPipelineColumnStyle(row.code);
+    return (
+      <div key={row.code} className="flex items-stretch flex-1 min-w-0">
+        <button
+          type="button"
+          onClick={() => openDetailModal(funnelModalKeyByCode[row.code])}
+          className={`group flex-1 p-4 rounded-xl border text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-indigo-500/5 cursor-pointer ${stageTone}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{row.labelTh || row.label}</span>
+            <GitBranch size={14} className="opacity-60 group-hover:opacity-100 shrink-0" />
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-2">
+            <span className="text-3xl font-black text-slate-100 tabular-nums leading-none">{loading ? '…' : row.count || 0}</span>
+            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Leads</span>
+          </div>
+          <div className="mt-2 text-sm font-semibold text-slate-200 tabular-nums">
+            {Number(row.value || 0).toLocaleString('th-TH')} <span className="text-[10px] font-normal text-slate-500">฿</span>
+          </div>
+          <div className="mt-3 h-1.5 rounded-full bg-slate-900/60 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-current opacity-70 transition-all duration-500"
+              style={{ width: `${barWidth}%` }}
+            />
+          </div>
+        </button>
+        {showArrow && (
+          <div className="flex flex-col items-center justify-center px-1.5 sm:px-2 shrink-0 self-center py-2">
+            <ChevronRight size={16} className="text-slate-600" />
+            <span className="mt-0.5 text-[9px] font-bold text-slate-500 whitespace-nowrap tabular-nums">
+              {row.conversionToNextPercent ?? 0}%
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const cards = useMemo(() => [
     {
       label: hasDateFilter ? 'กิจกรรมในช่วงที่เลือก' : 'กิจกรรมทั้งหมด',
@@ -398,49 +443,14 @@ function ReportsComponent() {
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-1 -mx-1 px-1">
-          <div className="flex items-stretch min-w-max lg:min-w-0 lg:w-full gap-0">
-            {visibleFunnelStages.map((row: any, index: number) => {
-              const next = visibleFunnelStages[index + 1];
-              const barWidth = Math.max(8, Math.round((Number(row.count || 0) / funnelMaxCount) * 100));
-              const stageTone = getPipelineColumnStyle(row.code);
-              return (
-                <div key={row.code} className="flex items-stretch flex-1 min-w-[132px] lg:min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => openDetailModal(funnelModalKeyByCode[row.code])}
-                    className={`group flex-1 p-4 rounded-xl border text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-indigo-500/5 cursor-pointer ${stageTone}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{row.labelTh || row.label}</span>
-                      <GitBranch size={14} className="opacity-60 group-hover:opacity-100 shrink-0" />
-                    </div>
-                    <div className="mt-3 flex items-end justify-between gap-2">
-                      <span className="text-3xl font-black text-slate-100 tabular-nums leading-none">{loading ? '…' : row.count || 0}</span>
-                      <span className="text-[10px] text-slate-500 uppercase tracking-wide">Leads</span>
-                    </div>
-                    <div className="mt-2 text-sm font-semibold text-slate-200 tabular-nums">
-                      {Number(row.value || 0).toLocaleString('th-TH')} <span className="text-[10px] font-normal text-slate-500">฿</span>
-                    </div>
-                    <div className="mt-3 h-1.5 rounded-full bg-slate-900/60 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-current opacity-70 transition-all duration-500"
-                        style={{ width: `${barWidth}%` }}
-                      />
-                    </div>
-                  </button>
-                  {next && (
-                    <div className="flex flex-col items-center justify-center px-1.5 sm:px-2 shrink-0 self-center py-2">
-                      <ChevronRight size={16} className="text-slate-600" />
-                      <span className="mt-0.5 text-[9px] font-bold text-slate-500 whitespace-nowrap tabular-nums">
-                        {row.conversionToNextPercent ?? 0}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        <div className="space-y-3">
+          {funnelRows.map((rowStages, rowIndex) => (
+            <div key={rowIndex} className="flex items-stretch w-full gap-0">
+              {rowStages.map((row: any, index: number) =>
+                renderFunnelCard(row, index < rowStages.length - 1)
+              )}
+            </div>
+          ))}
         </div>
       </section>
 

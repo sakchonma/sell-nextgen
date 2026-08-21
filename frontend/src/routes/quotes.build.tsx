@@ -21,7 +21,21 @@ type QuoteLine = {
   quantity: number;
   discountPercent: number;
   priceMode?: string;
+  subtitle?: string;
+  packageLabel?: string;
+  gradeLevels?: string;
+  productCategory?: string;
+  description?: string;
 };
+
+const DEFAULT_ACADEMIC_YEAR = new Date().getFullYear() + 543;
+
+function buildCleverSubtitle(packageLabel: string, academicYear: number) {
+  if (packageLabel.includes('ภาคเรียน')) {
+    return `ระยะเวลาการใช้งาน: 1 ภาคเรียน ปีการศึกษา ${academicYear}`;
+  }
+  return `ระยะเวลาการใช้งาน: 1 ปีการศึกษา ${academicYear}`;
+}
 
 function QuoteBuilderComponent() {
   const { user } = useAuth();
@@ -45,6 +59,9 @@ function QuoteBuilderComponent() {
 
   const [cleverProduct, setCleverProduct] = useState<any>(null);
   const [cleverPackageId, setCleverPackageId] = useState('');
+  const [cleverSubject, setCleverSubject] = useState('Clever Math');
+  const [cleverAcademicYear, setCleverAcademicYear] = useState(DEFAULT_ACADEMIC_YEAR);
+  const [cleverGradeLevels, setCleverGradeLevels] = useState('');
   const [cleverUsers, setCleverUsers] = useState(1);
   const [cleverUnitPrice, setCleverUnitPrice] = useState(0);
   const [cleverDiscount, setCleverDiscount] = useState(0);
@@ -86,13 +103,15 @@ function QuoteBuilderComponent() {
     [leads, leadSearch]
   );
 
-  const selectLead = (lead: { _id: string; schoolName: string } | null) => {
+  const selectLead = (lead: { _id: string; schoolName: string; gradeLevels?: string } | null) => {
     if (!lead) {
       setLeadId('');
       setLeadSearch('');
+      setCleverGradeLevels('');
     } else {
       setLeadId(lead._id);
       setLeadSearch(lead.schoolName);
+      setCleverGradeLevels(lead.gradeLevels || '');
     }
     setShowLeadDropdown(false);
   };
@@ -135,6 +154,8 @@ function QuoteBuilderComponent() {
     if (product.productCategory === 'clever_exercise') {
       setCleverProduct(product);
       setCleverPackageId(product.packages?.[0]?.id || '');
+      setCleverSubject('Clever Math');
+      setCleverAcademicYear(DEFAULT_ACADEMIC_YEAR);
       setCleverUsers(1);
       setCleverUnitPrice(0);
       setCleverDiscount(0);
@@ -164,9 +185,15 @@ function QuoteBuilderComponent() {
       setError('กรุณากรอกราคาต่อ User สำหรับ Clever Exercise');
       return;
     }
+    const packageLabel = pkg?.label || 'Package';
+    const gradeLine = cleverGradeLevels.trim();
     addLine({
       productId: cleverProduct._id,
-      name: `${cleverProduct.name} — ${pkg?.label || 'Package'} · ${cleverUsers} users`,
+      name: `${cleverSubject} License`,
+      subtitle: buildCleverSubtitle(packageLabel, Number(cleverAcademicYear) || DEFAULT_ACADEMIC_YEAR),
+      packageLabel,
+      gradeLevels: gradeLine ? `นักเรียนระดับชั้น ${gradeLine}` : '',
+      productCategory: 'clever_exercise',
       price: unitPrice,
       quantity: Number(cleverUsers) || 1,
       discountPercent: Number(cleverDiscount) || 0,
@@ -458,11 +485,26 @@ function QuoteBuilderComponent() {
               <h3 className="text-sm font-semibold text-slate-100">Clever Exercise</h3>
               <button type="button" onClick={() => setCleverProduct(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button>
             </div>
+            <select value={cleverSubject} onChange={e => setCleverSubject(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+              <option value="Clever Math">Clever Math</option>
+              <option value="Clever English">Clever English</option>
+              <option value="Clever Math + Clever English">Clever Math + Clever English</option>
+            </select>
             <select value={cleverPackageId} onChange={e => setCleverPackageId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
               {(cleverProduct.packages || []).map((pkg: any) => (
                 <option key={pkg.id} value={pkg.id}>{pkg.label}</option>
               ))}
             </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] text-slate-500 mb-1">ปีการศึกษา</label>
+                <input type="number" min={2500} value={cleverAcademicYear} onChange={e => setCleverAcademicYear(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-500 mb-1">ระดับชั้นนักเรียน</label>
+                <input type="text" value={cleverGradeLevels} onChange={e => setCleverGradeLevels(e.target.value)} placeholder="เช่น ประถมศึกษาปีที่ 4 - 6" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] text-slate-500 mb-1">จำนวน User</label>
