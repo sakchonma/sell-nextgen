@@ -33,6 +33,9 @@ const LEGACY_LEAD_STAGE_MAP: Record<string, SalesFunnelStage> = {
   'Pilot/Trial': 'Quotation',
   'Closed Won': 'Won',
   'Closed Lost': 'Lost',
+  นัดหมาย: 'Meeting',
+  Pending: 'Call',
+  Present: 'Presentation',
 };
 
 const LEGACY_OPPORTUNITY_STAGE_MAP: Record<string, SalesFunnelStage> = {

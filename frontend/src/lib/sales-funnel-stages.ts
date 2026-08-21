@@ -53,6 +53,9 @@ const LEGACY_LEAD_STAGE_MAP: Record<string, SalesFunnelStage> = {
   'Pilot/Trial': 'Quotation',
   'Closed Won': 'Won',
   'Closed Lost': 'Lost',
+  นัดหมาย: 'Meeting',
+  Pending: 'Call',
+  Present: 'Presentation',
 };
 
 export function normalizeLeadStage(value: unknown): SalesFunnelStage {

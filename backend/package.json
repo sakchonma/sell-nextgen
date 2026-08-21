@@ -13,7 +13,8 @@
     "dev": "tsx watch src/server.ts",
     "seed": "tsx src/config/seed-runner.ts",
     "seed:prod": "NODE_ENV=production tsx src/config/seed-runner.ts",
-    "backfill:activity-sync": "ALLOW_MEMORY_DB=false tsx src/scripts/backfill-activity-sync.ts"
+    "backfill:activity-sync": "ALLOW_MEMORY_DB=false tsx src/scripts/backfill-activity-sync.ts",
+    "import:schools": "ALLOW_MEMORY_DB=false tsx src/scripts/import-schools-xlsx.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

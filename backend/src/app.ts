@@ -5,7 +5,6 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import fs from 'fs';
 import path from 'path';
-import zlib from 'zlib';
 import { z } from 'zod';
 import { getDbStatus } from './config/mongodb.js';
 import { config } from './config/index.js';
@@ -55,6 +54,12 @@ import {
   normalizeOpportunityStage,
   salesFunnelStageSchemaValues,
 } from './config/sales-funnel-stages.js';
+import {
+  buildLeadFromImportRow,
+  collapseImportDrafts,
+  leadIdentityKey,
+  parseImportBuffer,
+} from './lib/lead-import.js';
 import type { ActivityTypeScope } from './types/index.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
 import { hashPassword, validatePasswordPolicy, verifyPassword } from './utils/password.js';
@@ -2037,274 +2042,6 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
   res.send(`\uFEFF${rows.join('\n')}`);
 });
 
-function parseCsvLine(line: string) {
-  const cells: string[] = [];
-  let current = '';
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      current += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === ',' && !quoted) {
-      cells.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function decodeXml(value: string) {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
-function colToIndex(col: string) {
-  return col.split('').reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
-}
-
-function readZipEntry(buffer: Buffer, entryName: string) {
-  const eocdSignature = 0x06054b50;
-  let eocdOffset = -1;
-  for (let offset = buffer.length - 22; offset >= Math.max(0, buffer.length - 66000); offset -= 1) {
-    if (buffer.readUInt32LE(offset) === eocdSignature) {
-      eocdOffset = offset;
-      break;
-    }
-  }
-  if (eocdOffset === -1) throw new Error('อ่านโครงสร้างไฟล์ Excel ไม่ได้');
-
-  const centralDirOffset = buffer.readUInt32LE(eocdOffset + 16);
-  const centralDirSize = buffer.readUInt32LE(eocdOffset + 12);
-  let offset = centralDirOffset;
-  const end = centralDirOffset + centralDirSize;
-
-  while (offset < end) {
-    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
-    const method = buffer.readUInt16LE(offset + 10);
-    const compressedSize = buffer.readUInt32LE(offset + 20);
-    const fileNameLength = buffer.readUInt16LE(offset + 28);
-    const extraLength = buffer.readUInt16LE(offset + 30);
-    const commentLength = buffer.readUInt16LE(offset + 32);
-    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
-    const fileName = buffer.subarray(offset + 46, offset + 46 + fileNameLength).toString('utf8');
-
-    if (fileName === entryName) {
-      const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
-      const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
-      const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
-      const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
-      if (method === 0) return compressed.toString('utf8');
-      if (method === 8) return zlib.inflateRawSync(compressed).toString('utf8');
-      throw new Error(`ไม่รองรับ compression method ${method} ในไฟล์ Excel`);
-    }
-
-    offset += 46 + fileNameLength + extraLength + commentLength;
-  }
-
-  throw new Error(`ไม่พบ ${entryName} ในไฟล์ Excel`);
-}
-
-function parseSharedStrings(xml: string) {
-  const strings: string[] = [];
-  const siMatches = xml.matchAll(/<si\b[\s\S]*?<\/si>/g);
-  for (const match of siMatches) {
-    const text = [...match[0].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)]
-      .map(item => decodeXml(item[1]))
-      .join('');
-    strings.push(text);
-  }
-  return strings;
-}
-
-function parseWorksheetRows(xml: string, sharedStrings: string[]) {
-  const rows: Record<string, string>[] = [];
-  const rowMatches = xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g);
-  for (const rowMatch of rowMatches) {
-    const values: Record<string, string> = {};
-    const cellMatches = rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g);
-    for (const cellMatch of cellMatches) {
-      const attrs = cellMatch[1];
-      const body = cellMatch[2];
-      const ref = attrs.match(/\br="([A-Z]+)\d+"/)?.[1];
-      if (!ref) continue;
-      const type = attrs.match(/\bt="([^"]+)"/)?.[1];
-      let value = '';
-      if (type === 'inlineStr') {
-        value = [...body.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(item => decodeXml(item[1])).join('');
-      } else {
-        const rawValue = body.match(/<v>([\s\S]*?)<\/v>/)?.[1] || '';
-        value = type === 's' && rawValue ? sharedStrings[Number(rawValue)] || '' : decodeXml(rawValue);
-      }
-      values[ref] = value.trim();
-    }
-    if (Object.values(values).some(Boolean)) rows.push(values);
-  }
-  return rows;
-}
-
-function parseXlsxRows(buffer: Buffer) {
-  const sharedStringsXml = readZipEntry(buffer, 'xl/sharedStrings.xml');
-  const sheetXml = readZipEntry(buffer, 'xl/worksheets/sheet1.xml');
-  const sharedStrings = parseSharedStrings(sharedStringsXml);
-  const rows = parseWorksheetRows(sheetXml, sharedStrings);
-  if (rows.length < 2) return [] as Record<string, string>[];
-  const headers = rows[0];
-  return rows.slice(1).map(row => {
-    const mapped: Record<string, string> = {};
-    Object.entries(row).forEach(([col, value]) => {
-      mapped[`__col_${col}`] = value;
-    });
-    Object.entries(headers).forEach(([col, header]) => {
-      if (header) mapped[header] = row[col] || '';
-    });
-    return mapped;
-  });
-}
-
-function excelSerialToDateText(value?: string) {
-  if (!value || value === '-') return '';
-  const serial = Number(value);
-  if (!Number.isFinite(serial) || serial < 30000) return value;
-  const date = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
-  return date.toISOString().slice(0, 10);
-}
-
-function numberFromImportCell(value?: string) {
-  const cleaned = String(value || '').replace(/,/g, '').trim();
-  if (!cleaned || cleaned === '-') return undefined;
-  const numberValue = Number(cleaned);
-  return Number.isFinite(numberValue) ? numberValue : undefined;
-}
-
-function provinceToZone(province?: string) {
-  const normalized = String(province || '').replace(/\s/g, '');
-  if (!normalized) return 'ภาคกลาง';
-  const east = ['ชลบุรี', 'ระยอง', 'จันทบุรี', 'ตราด', 'ฉะเชิงเทรา', 'ปราจีนบุรี', 'สระแก้ว'];
-  const north = ['เชียงใหม่', 'เชียงราย', 'ลำพูน', 'ลำปาง', 'แพร่', 'น่าน', 'พะเยา', 'แม่ฮ่องสอน', 'อุตรดิตถ์', 'พิษณุโลก', 'สุโขทัย', 'ตาก', 'กำแพงเพชร', 'พิจิตร', 'เพชรบูรณ์'];
-  const south = ['สุราษฎร์ธานี', 'นครศรีธรรมราช', 'สงขลา', 'ภูเก็ต', 'กระบี่', 'ตรัง', 'พัทลุง', 'ชุมพร', 'ระนอง', 'พังงา', 'สตูล', 'ปัตตานี', 'ยะลา', 'นราธิวาส'];
-  const west = ['กาญจนบุรี', 'ราชบุรี', 'เพชรบุรี', 'ประจวบคีรีขันธ์'];
-  const isan = ['นครราชสีมา', 'ขอนแก่น', 'อุดรธานี', 'อุบลราชธานี', 'บุรีรัมย์', 'สุรินทร์', 'ศรีสะเกษ', 'ร้อยเอ็ด', 'มหาสารคาม', 'กาฬสินธุ์', 'สกลนคร', 'นครพนม', 'มุกดาหาร', 'เลย', 'หนองคาย', 'บึงกาฬ', 'หนองบัวลำภู', 'ชัยภูมิ', 'ยโสธร', 'อำนาจเจริญ'];
-  if (east.some(item => normalized.includes(item))) return 'ภาคตะวันออก';
-  if (north.some(item => normalized.includes(item))) return 'ภาคเหนือ';
-  if (south.some(item => normalized.includes(item))) return 'ภาคใต้';
-  if (west.some(item => normalized.includes(item))) return 'ภาคตะวันตก';
-  if (isan.some(item => normalized.includes(item))) return 'ภาคอีสาน';
-  return 'ภาคกลาง';
-}
-
-function mapLegacyStepToLeadStage(step?: string) {
-  const value = String(step || '').toLowerCase();
-  if (!value) return 'Call';
-  if (value.includes('ปิดกิจการ') || value.includes('ไม่สนใจ') || value.includes('closed lost') || value.includes('lost')) return 'Lost';
-  if (value.includes('won') || value.includes('ปิดการขาย')) return 'Won';
-  if (value.includes('trial') || value.includes('pilot') || value.includes('ทดลอง') || value.includes('proposal') || value.includes('เสนอราคา') || value.includes('quotation')) return 'Quotation';
-  if (value.includes('present') || value.includes('พรีเซน')) return 'Presentation';
-  if (value.includes('demo') || value.includes('workshop') || value.includes('สาธิต')) return 'DemoWorkshop';
-  if (value.includes('นัด') || value.includes('meeting') || value.includes('สนใจ')) return 'Meeting';
-  if (value.includes('โทร') || value.includes('call') || value.includes('ติดต่อ') || value.includes('ยื่น') || value.includes('email') || value.includes('อีเมล')) return 'Call';
-  return 'Call';
-}
-
-function normalizeLeadStatus(status?: string, stage?: string) {
-  const raw = String(status || '').trim();
-  if (['Cold', 'Warm', 'Hot', 'Customer'].includes(raw)) return raw;
-  const mappedStage = normalizeLeadStage(mapLegacyStepToLeadStage(stage));
-  if (mappedStage === 'Won') return 'Customer';
-  if (['DemoWorkshop', 'Quotation'].includes(mappedStage)) return 'Hot';
-  if (['Meeting', 'Presentation'].includes(mappedStage)) return 'Warm';
-  return 'Cold';
-}
-
-function emailFromCell(value?: string) {
-  return String(value || '').replace(/^mailto:/i, '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
-}
-
-function buildLeadFromImportRow(row: Record<string, string>, index: number, currentUserId: string) {
-  const schoolName = row.schoolName || row.name || row['รายชื่อโรงเรียน'];
-  const district = row['เขต'] || row.district || '';
-  const province = row['จังหวัด'] || row.province || '';
-  const legacyStep = row.stage || row['อยู่ในขั้นตอน'];
-  const stage = normalizeLeadStage(
-    salesFunnelStageSchemaValues.includes(legacyStep as any)
-      ? legacyStep
-      : mapLegacyStepToLeadStage(legacyStep)
-  );
-  const status = normalizeLeadStatus(row.status || row['สถานะ'], legacyStep);
-  const emailCell = row.email || row.contactEmail || row['อีเมล'];
-  const email = emailFromCell(emailCell);
-  const phone = row.phone || row.contactPhone || row['เบอร์โทร'] || '';
-  const contactName = row.contactName || row['ผู้ติดต่อ'] || row.__col_P || '';
-  const noteParts = [
-    row['ระดับชั้น'] ? `ระดับชั้น: ${row['ระดับชั้น']}` : '',
-    row['จำนวน นร.'] ? `จำนวน นร.: ${row['จำนวน นร.']}` : '',
-    row['จำนวน นร. ป.4-6'] ? `จำนวน นร. ป.4-6: ${row['จำนวน นร. ป.4-6']}` : '',
-    legacyStep ? `ขั้นตอนเดิม: ${legacyStep}` : '',
-    row['ติดต่อลูกค้าล่าสุด'] ? `ติดต่อล่าสุด: ${excelSerialToDateText(row['ติดต่อลูกค้าล่าสุด'])}` : '',
-    row['นัดโทรครั้งถัดไป'] ? `นัดโทรครั้งถัดไป: ${excelSerialToDateText(row['นัดโทรครั้งถัดไป'])}` : '',
-    row['Ps / ยื่นหนังสือ'] ? `Ps/ยื่นหนังสือ: ${row['Ps / ยื่นหนังสือ']}` : '',
-    row.Remarks ? `Remarks: ${row.Remarks}` : '',
-    (row.Sale || row.__col_Q) ? `Sale เดิม: ${row.Sale || row.__col_Q}` : '',
-    emailCell && !email ? `ข้อมูลช่องอีเมล: ${emailCell}` : '',
-    contactName ? `ข้อมูลเพิ่มเติม: ${contactName}` : ''
-  ].filter(Boolean);
-
-  return {
-    _id: `l_import_${Date.now()}_${index}`,
-    schoolName,
-    address: [district, province].filter(Boolean).join(' '),
-    zone: row.zone || provinceToZone(province),
-    status,
-    stage,
-    score: status === 'Hot' ? 85 : status === 'Warm' ? 60 : status === 'Customer' ? 100 : stage === 'Lost' ? 0 : 10,
-    gradeLevels: row.gradeLevels || row['ระดับชั้น'] || undefined,
-    educationAuthority: row.educationAuthority || row.__col_C || undefined,
-    district: district || undefined,
-    province: province || undefined,
-    studentCount: numberFromImportCell(row.studentCount || row['จำนวน นร.']),
-    upperElementaryStudentCount: numberFromImportCell(row.upperElementaryStudentCount || row['จำนวน นร. ป.4-6']),
-    lastContactedAt: excelSerialToDateText(row.lastContactedAt || row['ติดต่อลูกค้าล่าสุด']) || undefined,
-    nextCallAt: excelSerialToDateText(row.nextCallAt || row['นัดโทรครั้งถัดไป']) || undefined,
-    documentStatus: row.documentStatus || row['Ps / ยื่นหนังสือ'] || undefined,
-    remarks: row.remarks || row.Remarks || undefined,
-    legacySaleName: row.legacySaleName || row.Sale || row.__col_Q || undefined,
-    source: row.source || 'Excel Import',
-    campaign: row.campaign || 'สรุปรายชื่อโรงเรียนกำลังดำเนินการ',
-    archived: stage === 'Lost' && String(legacyStep || '').includes('ปิดกิจการ'),
-    contacts: phone || email || contactName ? [{
-      name: contactName || row.Sale || row.__col_Q || 'ผู้ติดต่อจากไฟล์นำเข้า',
-      position: emailCell && !email ? emailCell : '',
-      phone,
-      email
-    }] : [],
-    assignedTo: currentUserId,
-    assignmentHistory: [{
-      toUserId: currentUserId,
-      changedBy: currentUserId,
-      reason: 'Excel import',
-      changedAt: new Date()
-    }],
-    notes: noteParts.length ? [{
-      author: 'Excel Import',
-      content: noteParts.join('\n'),
-      type: 'General',
-      createdAt: new Date()
-    }] : [],
-    attachments: [],
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-}
 
 app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw({ type: ['text/csv', 'text/plain', 'application/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'], limit: '10mb' }), async (req, res) => {
   const currentUser = await getCurrentUser(req);
@@ -2318,84 +2055,83 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
     return;
   }
 
-  let rows: Record<string, string>[] = [];
-  const isXlsx = bodyBuffer.subarray(0, 2).toString('utf8') === 'PK'
-    || String(req.headers['content-type'] || '').includes('spreadsheetml');
-
-  if (isXlsx) {
-    rows = parseXlsxRows(bodyBuffer);
-  } else {
-    const csvText = bodyBuffer.toString('utf8').replace(/^\uFEFF/, '').trim();
-    if (!csvText) {
-      res.status(400).json({ message: 'CSV ว่างหรืออ่านไม่ได้' });
-      return;
-    }
-    const lines = csvText.split(/\r?\n/).filter(Boolean);
-    const headers = parseCsvLine(lines[0]).map(header => header.trim());
-    rows = lines.slice(1).map(line => {
-      const cells = parseCsvLine(line);
-      return headers.reduce((acc, header, index) => ({ ...acc, [header]: cells[index] || '' }), {} as Record<string, string>);
-    });
+  const parsed = parseImportBuffer(bodyBuffer, String(req.headers['content-type'] || ''));
+  if (!parsed.rows.length) {
+    res.status(400).json({ message: parsed.format === 'csv' ? 'CSV ว่างหรืออ่านไม่ได้' : 'ไฟล์ว่างหรืออ่านไม่ได้' });
+    return;
   }
 
+  const users = await findAll<any>(Users());
   const existingLeads = await findAll<any>(Leads());
   const imported: any[] = [];
   const updated: any[] = [];
   const skipped: any[] = [];
+  const drafts = collapseImportDrafts(
+    parsed.rows.map((row, index) => buildLeadFromImportRow(row, {
+      index,
+      currentUserId: currentUser._id,
+      users,
+    })).filter(draft => {
+      if (draft.schoolName) return true;
+      skipped.push({ reason: 'missing_schoolName' });
+      return false;
+    })
+  );
 
-  for (const [index, row] of rows.entries()) {
-    const leadDraft = buildLeadFromImportRow(row, index, currentUser._id);
-    if (!leadDraft.schoolName) {
-      skipped.push({ reason: 'missing_schoolName', row });
-      continue;
-    }
-    const duplicates = findLeadDuplicates([...existingLeads, ...imported], leadDraft);
-    if (duplicates.length > 0) {
-      const existingDuplicate = existingLeads.find(item => duplicates.some(duplicate => duplicate._id === item._id));
-      if (existingDuplicate) {
-        const enrichedLead = {
-          ...existingDuplicate,
-          schoolName: leadDraft.schoolName || existingDuplicate.schoolName,
-          address: leadDraft.address || existingDuplicate.address,
-          zone: leadDraft.zone || existingDuplicate.zone,
-          status: leadDraft.status || existingDuplicate.status,
-          stage: normalizeLeadStage(leadDraft.stage || existingDuplicate.stage),
-          score: leadDraft.score !== undefined ? leadDraft.score : existingDuplicate.score,
-          gradeLevels: leadDraft.gradeLevels ?? existingDuplicate.gradeLevels,
-          educationAuthority: leadDraft.educationAuthority ?? existingDuplicate.educationAuthority,
-          district: leadDraft.district ?? existingDuplicate.district,
-          province: leadDraft.province ?? existingDuplicate.province,
-          studentCount: leadDraft.studentCount ?? existingDuplicate.studentCount,
-          upperElementaryStudentCount: leadDraft.upperElementaryStudentCount ?? existingDuplicate.upperElementaryStudentCount,
-          lastContactedAt: leadDraft.lastContactedAt ?? existingDuplicate.lastContactedAt,
-          nextCallAt: leadDraft.nextCallAt ?? existingDuplicate.nextCallAt,
-          documentStatus: leadDraft.documentStatus ?? existingDuplicate.documentStatus,
-          remarks: leadDraft.remarks ?? existingDuplicate.remarks,
-          legacySaleName: leadDraft.legacySaleName ?? existingDuplicate.legacySaleName,
-          source: leadDraft.source || existingDuplicate.source,
-          campaign: leadDraft.campaign || existingDuplicate.campaign,
-          contacts: (leadDraft.contacts || []).length ? leadDraft.contacts : existingDuplicate.contacts,
-          notes: existingDuplicate.notes || [],
-          updatedAt: new Date()
-        };
-        if ('insertOne' in Leads() && !(Leads() instanceof MemoryCollection)) {
-          await (Leads() as any).updateOne({ _id: existingDuplicate._id }, { $set: enrichedLead });
-        } else {
-          const idx = (MemoryStore as any).leads.findIndex((item: any) => item._id === existingDuplicate._id);
-          if (idx !== -1) (MemoryStore as any).leads[idx] = enrichedLead;
-        }
-        updated.push({ _id: existingDuplicate._id, schoolName: enrichedLead.schoolName });
+  for (const leadDraft of drafts) {
+    const identity = leadIdentityKey(leadDraft);
+    const existingDuplicate = existingLeads.find((item: any) => leadIdentityKey(item) === identity)
+      || existingLeads.find((item: any) => findLeadDuplicates([item], leadDraft).length > 0);
+    if (existingDuplicate) {
+      const previousStage = existingDuplicate.stage;
+      const enrichedLead = {
+        ...existingDuplicate,
+        schoolName: leadDraft.schoolName || existingDuplicate.schoolName,
+        address: leadDraft.address || existingDuplicate.address,
+        zone: leadDraft.zone || existingDuplicate.zone,
+        status: leadDraft.status || existingDuplicate.status,
+        stage: normalizeLeadStage(leadDraft.stage || existingDuplicate.stage),
+        score: leadDraft.score !== undefined ? leadDraft.score : existingDuplicate.score,
+        gradeLevels: leadDraft.gradeLevels ?? existingDuplicate.gradeLevels,
+        educationAuthority: leadDraft.educationAuthority ?? existingDuplicate.educationAuthority,
+        district: leadDraft.district ?? existingDuplicate.district,
+        province: leadDraft.province ?? existingDuplicate.province,
+        studentCount: leadDraft.studentCount ?? existingDuplicate.studentCount,
+        upperElementaryStudentCount: leadDraft.upperElementaryStudentCount ?? existingDuplicate.upperElementaryStudentCount,
+        lastContactedAt: leadDraft.lastContactedAt ?? existingDuplicate.lastContactedAt,
+        nextCallAt: leadDraft.nextCallAt ?? existingDuplicate.nextCallAt,
+        documentStatus: leadDraft.documentStatus ?? existingDuplicate.documentStatus,
+        remarks: leadDraft.remarks ?? existingDuplicate.remarks,
+        legacySaleName: leadDraft.legacySaleName ?? existingDuplicate.legacySaleName,
+        source: leadDraft.source || existingDuplicate.source,
+        campaign: leadDraft.campaign || existingDuplicate.campaign,
+        archived: leadDraft.archived ?? existingDuplicate.archived,
+        contacts: (leadDraft.contacts || []).length ? leadDraft.contacts : existingDuplicate.contacts,
+        assignedTo: leadDraft.assignedTo || existingDuplicate.assignedTo,
+        notes: existingDuplicate.notes || [],
+        updatedAt: new Date()
+      };
+      if ('insertOne' in Leads() && !(Leads() instanceof MemoryCollection)) {
+        await (Leads() as any).updateOne({ _id: existingDuplicate._id }, { $set: enrichedLead });
       } else {
-        skipped.push({ reason: 'duplicate', schoolName: leadDraft.schoolName, duplicates });
+        const idx = (MemoryStore as any).leads.findIndex((item: any) => item._id === existingDuplicate._id);
+        if (idx !== -1) (MemoryStore as any).leads[idx] = enrichedLead;
       }
+      Object.assign(existingDuplicate, enrichedLead);
+      await syncLeadStageToOpportunity(enrichedLead, previousStage, currentUser._id, 'Excel import');
+      updated.push({ _id: existingDuplicate._id, schoolName: enrichedLead.schoolName, stage: enrichedLead.stage });
       continue;
     }
     imported.push(leadDraft);
+    existingLeads.push(leadDraft);
   }
 
-  await Promise.all(imported.map(lead => Leads().insertOne(lead as any)));
-  await createAuditLog(req, currentUser, isXlsx ? 'lead.import_xlsx' : 'lead.import_csv', 'lead', {}, { imported: imported.length, updated: updated.length, skipped: skipped.length });
-  res.status(201).json({ imported: imported.length, updated: updated.length, skipped, format: isXlsx ? 'xlsx' : 'csv' });
+  await Promise.all(imported.map(async lead => {
+    await Leads().insertOne(lead as any);
+    await syncLeadStageToOpportunity(lead, undefined, currentUser._id, 'Excel import');
+  }));
+  await createAuditLog(req, currentUser, parsed.format === 'xlsx' ? 'lead.import_xlsx' : 'lead.import_csv', 'lead', {}, { imported: imported.length, updated: updated.length, skipped: skipped.length });
+  res.status(201).json({ imported: imported.length, updated: updated.length, skipped, format: parsed.format });
 });
 
 app.get('/api/leads/:id', requirePermission('manageLeads'), async (req, res) => {

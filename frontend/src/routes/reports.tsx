@@ -30,12 +30,6 @@ type DetailModalKey =
   | 'funnelQuotation'
   | 'funnelWon'
   | 'funnelLost'
-  | 'activityCall'
-  | 'activityMeeting'
-  | 'activityPresentation'
-  | 'activityDemoWorkshop'
-  | 'activityQuotation'
-  | 'activityWon'
   | null;
 
 const MODAL_PAGE_SIZE = 15;
@@ -103,14 +97,6 @@ function ReportsComponent() {
     Won: 'funnelWon',
     Lost: 'funnelLost',
   };
-
-  const activityTaskKeyByCode: Record<string, Exclude<DetailModalKey, null>> = {
-    Call: 'activityCall',
-    Meeting: 'activityMeeting',
-    Presentation: 'activityPresentation',
-    DemoWorkshop: 'activityDemoWorkshop',
-  };
-  const activityBreakdown = reportSummary?.activityBreakdown;
 
   const visibleFunnelStages = useMemo(
     () => salesFunnelStages.filter((row: any) => row.code !== 'Lost'),
@@ -250,14 +236,6 @@ function ReportsComponent() {
       ...(salesFunnelStages.map((row: any) => ['salesFunnel', `${row.labelTh || row.label}_count`, row.count ?? 0])),
       ...(salesFunnelStages.map((row: any) => ['salesFunnel', `${row.labelTh || row.label}_value`, row.value ?? 0])),
       ...(salesFunnelStages.map((row: any) => ['salesFunnel', `${row.labelTh || row.label}_conversion`, row.conversionToNextPercent ?? 0])),
-      ['activityBreakdown', 'Call', activityBreakdown?.tasks?.Call ?? 0],
-      ['activityBreakdown', 'Meeting', activityBreakdown?.tasks?.Meeting ?? 0],
-      ['activityBreakdown', 'Presentation', activityBreakdown?.tasks?.Presentation ?? 0],
-      ['activityBreakdown', 'DemoWorkshop', activityBreakdown?.tasks?.DemoWorkshop ?? 0],
-      ['activityBreakdown', 'Quotation_count', activityBreakdown?.quotation?.count ?? 0],
-      ['activityBreakdown', 'Quotation_approvedValue', activityBreakdown?.quotation?.approvedValue ?? 0],
-      ['activityBreakdown', 'Won_count', activityBreakdown?.won?.count ?? 0],
-      ['activityBreakdown', 'Won_value', activityBreakdown?.won?.value ?? 0],
       ...((reportSummary?.salesForecast || []).map((row: any) => ['salesForecast', row.ownerName, row.weightedForecast])),
       ...((reportSummary?.salesPerformance || []).map((row: any) => ['salesPerformance', row.name, row.wonValue])),
     ];
@@ -323,42 +301,10 @@ function ReportsComponent() {
           rows: items,
         };
       }
-      case 'activityCall':
-      case 'activityMeeting':
-      case 'activityPresentation':
-      case 'activityDemoWorkshop': {
-        const code = detailModal.replace('activity', '');
-        const rows = activityBreakdown?.tasksByType?.[code] || [];
-        const label = code === 'Meeting' ? 'นัดหมาย' : code === 'DemoWorkshop' ? 'Demo/Workshop' : code;
-        return {
-          title: `กิจกรรม · ${label}`,
-          subtitle: `${rows.length} Task ในช่วงที่เลือก`,
-          kind: 'activityTask' as const,
-          rows,
-        };
-      }
-      case 'activityQuotation': {
-        const rows = activityBreakdown?.quotation?.items || [];
-        return {
-          title: 'Quotation ในช่วง',
-          subtitle: `${rows.length} ใบเสนอราคา · อนุมัติ ${Number(activityBreakdown?.quotation?.approvedValue || 0).toLocaleString('th-TH')} ฿`,
-          kind: 'quote' as const,
-          rows,
-        };
-      }
-      case 'activityWon': {
-        const rows = activityBreakdown?.won?.items || [];
-        return {
-          title: 'Won Deals ในช่วง',
-          subtitle: `${rows.length} ดีล · มูลค่ารวม ${Number(activityBreakdown?.won?.value || 0).toLocaleString('th-TH')} ฿`,
-          kind: 'wonOpp' as const,
-          rows,
-        };
-      }
       default:
         return null;
     }
-  }, [detailModal, reportSummary, overdueNowRows.length, overdueInRangeRows.length, slaCompletedRows.length, slaBreachedRows.length, funnelStageByCode, activityBreakdown]);
+  }, [detailModal, reportSummary, overdueNowRows.length, overdueInRangeRows.length, slaCompletedRows.length, slaBreachedRows.length, funnelStageByCode]);
 
   const pagedModalRows = useMemo(() => {
     if (!modalConfig) return [];
@@ -451,50 +397,6 @@ function ReportsComponent() {
               )}
             </div>
           ))}
-        </div>
-      </section>
-
-      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
-        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุปกิจกรรมตามประเภท</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          {[
-            ['Call', 'Call', activityBreakdown?.tasks?.Call ?? 0],
-            ['Meeting', 'นัดหมาย', activityBreakdown?.tasks?.Meeting ?? 0],
-            ['Presentation', 'Presentation', activityBreakdown?.tasks?.Presentation ?? 0],
-            ['DemoWorkshop', 'Demo/Workshop', activityBreakdown?.tasks?.DemoWorkshop ?? 0],
-          ].map(([code, label, value]) => (
-            <button
-              key={code}
-              type="button"
-              onClick={() => openDetailModal(activityTaskKeyByCode[code])}
-              className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer text-left transition-all hover:scale-[1.01]"
-            >
-              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">{label}</span>
-              <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : value}</span>
-              <span className="block mt-1 text-[10px] text-slate-500">Task ในช่วง</span>
-              <span className="block mt-2 text-[10px] text-indigo-300/80">กดเพื่อดูรายละเอียด</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => openDetailModal('activityQuotation')}
-            className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 cursor-pointer text-left transition-all hover:scale-[1.01]"
-          >
-            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Quotation</span>
-            <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : activityBreakdown?.quotation?.count ?? 0}</span>
-            <span className="block mt-1 text-[10px] text-slate-500">อนุมัติ {Number(activityBreakdown?.quotation?.approvedValue || 0).toLocaleString('th-TH')} ฿</span>
-            <span className="block mt-2 text-[10px] text-emerald-300/80">กดเพื่อดูรายละเอียด</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => openDetailModal('activityWon')}
-            className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 cursor-pointer text-left transition-all hover:scale-[1.01]"
-          >
-            <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">Won</span>
-            <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : activityBreakdown?.won?.count ?? 0}</span>
-            <span className="block mt-1 text-[10px] text-slate-500">{Number(activityBreakdown?.won?.value || 0).toLocaleString('th-TH')} ฿</span>
-            <span className="block mt-2 text-[10px] text-amber-300/80">กดเพื่อดูรายละเอียด</span>
-          </button>
         </div>
       </section>
 
@@ -612,49 +514,6 @@ function ReportsComponent() {
                         )}
                       </div>
                       <div className="text-lg font-black text-indigo-300 shrink-0">{Number(row.value || 0).toLocaleString('th-TH')} ฿</div>
-                    </div>
-                  </a>
-                ))
-              ) : modalConfig.kind === 'activityTask' ? (
-                pagedModalRows.map((row: any) => (
-                  <a
-                    key={row.id}
-                    href="/tasks"
-                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="text-base font-bold text-slate-100">{row.title}</div>
-                        <div className="text-sm text-slate-400 mt-1">
-                          {formatTaskType(row.type, row.typeLabel, taskTypes)}
-                          {leadById(row.leadId)?.schoolName ? ` · ${leadById(row.leadId)?.schoolName}` : ''}
-                        </div>
-                        <div className="text-xs text-slate-500 mt-1">{row.status || 'Pending'}</div>
-                      </div>
-                      <div className="text-sm font-semibold text-indigo-300 shrink-0">
-                        {new Date(row.startAt || row.endAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
-                      </div>
-                    </div>
-                  </a>
-                ))
-              ) : modalConfig.kind === 'wonOpp' ? (
-                pagedModalRows.map((row: any) => (
-                  <a
-                    key={row.id}
-                    href="/pipeline"
-                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="text-base font-bold text-slate-100">{row.title}</div>
-                        <div className="text-sm text-slate-400 mt-1">{leadById(row.leadId)?.schoolName || row.leadId || 'ไม่ระบุโรงเรียน'}</div>
-                        {row.closeDate && (
-                          <div className="text-xs text-slate-500 mt-1">
-                            ปิด {new Date(row.closeDate).toLocaleDateString('th-TH')}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-lg font-black text-amber-300 shrink-0">{Number(row.value || 0).toLocaleString('th-TH')} ฿</div>
                     </div>
                   </a>
                 ))
