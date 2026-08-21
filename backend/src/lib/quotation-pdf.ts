@@ -24,6 +24,24 @@ function resolveFontPath(fileName: string) {
   return found;
 }
 
+function resolveAssetPath(fileName: string) {
+  const candidates = [
+    join(__dirname, '../../assets', fileName),
+    join(process.cwd(), 'assets', fileName),
+    join(process.cwd(), 'backend/assets', fileName),
+  ];
+  return candidates.find(path => existsSync(path));
+}
+
+const LOGO_FILE = 'nextgen-education-logo.png';
+const LOGO_WIDTH = 112;
+const LOGO_HEIGHT = 60;
+const TABLE_BORDER = '#000000';
+const HEADER_BG = '#e8e8e8';
+const TABLE_COL_WIDTHS = [36, 228, 58, 92, 97];
+const FOOTER_ROW_HEIGHT = 20;
+const CELL_PAD = 5;
+
 function formatThaiDate(date: Date | string | undefined) {
   const value = date ? new Date(date) : new Date();
   const day = String(value.getDate()).padStart(2, '0');
@@ -103,6 +121,61 @@ function calcTotals(quote: Record<string, unknown>) {
   return { subtotal, overallDiscount, beforeVat, vatPercent, vat, grandTotal };
 }
 
+function columnX(tableX: number, colWidths: number[], colIndex: number) {
+  let x = tableX;
+  for (let i = 0; i < colIndex; i += 1) x += colWidths[i];
+  return x;
+}
+
+function columnsWidth(colWidths: number[], fromCol: number, toCol: number) {
+  return colWidths.slice(fromCol, toCol + 1).reduce((sum, width) => sum + width, 0);
+}
+
+function buildDescriptionBlocks(row: QuoteLineInput) {
+  const blocks: Array<{ text: string; bold?: boolean }> = [
+    { text: row.title, bold: true },
+  ];
+  if (row.subtitle) blocks.push({ text: row.subtitle, bold: true });
+  if (row.gradeLine) blocks.push({ text: row.gradeLine, bold: true });
+  if (row.scopeOfWork?.length) {
+    blocks.push({ text: 'Scope of work', bold: true });
+    row.scopeOfWork.forEach((line, index) => {
+      blocks.push({ text: `${index + 1}. ${line}` });
+    });
+  }
+  return blocks;
+}
+
+function measureDescriptionHeight(
+  doc: InstanceType<typeof PDFDocument>,
+  blocks: Array<{ text: string; bold?: boolean }>,
+  width: number,
+  setFont: (bold?: boolean, size?: number) => void,
+) {
+  let height = CELL_PAD * 2;
+  blocks.forEach(block => {
+    setFont(Boolean(block.bold), 9);
+    height += doc.heightOfString(block.text, { width }) + 2;
+  });
+  return Math.max(48, height);
+}
+
+function drawDescriptionBlocks(
+  doc: InstanceType<typeof PDFDocument>,
+  blocks: Array<{ text: string; bold?: boolean }>,
+  x: number,
+  y: number,
+  width: number,
+  setFont: (bold?: boolean, size?: number) => void,
+) {
+  let cursorY = y + CELL_PAD;
+  blocks.forEach(block => {
+    setFont(Boolean(block.bold), 9);
+    doc.fillColor('#111111').text(block.text, x + CELL_PAD, cursorY, { width: width - CELL_PAD * 2 });
+    cursorY += doc.heightOfString(block.text, { width: width - CELL_PAD * 2 }) + 2;
+  });
+}
+
 export function buildQuotationPdf(input: BuildQuotationPdfInput): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 0 });
@@ -117,7 +190,9 @@ export function buildQuotationPdf(input: BuildQuotationPdfInput): Promise<Buffer
     const { quote, lead, creator } = input;
     const lines = buildQuoteLines(quote, lead);
     const totals = calcTotals(quote);
-    const allScope = lines.flatMap(line => line.scopeOfWork || []);
+    const tableRows = lines.length > 0
+      ? lines
+      : [{ index: 1, title: '-', quantity: 0, unitPrice: 0, lineTotal: 0 } as QuoteLineInput];
 
     const contacts = (lead?.contacts as Array<{ phone?: string }>) || [];
     const customerName = String(lead?.schoolName || quote.customerName || '-');
@@ -126,26 +201,38 @@ export function buildQuotationPdf(input: BuildQuotationPdfInput): Promise<Buffer
     const customerTaxId = String(quote.customerTaxId || lead?.taxId || '').trim();
     const customerTel = String(contacts[0]?.phone || '').trim();
 
-    let y = 36;
+    let y = 32;
+    const headerTop = y;
+    const logoPath = resolveAssetPath(LOGO_FILE);
+    const companyX = logoPath ? MARGIN_LEFT + LOGO_WIDTH + 14 : MARGIN_LEFT;
+    const companyWidth = logoPath ? CONTENT_WIDTH - LOGO_WIDTH - 14 : CONTENT_WIDTH;
+
+    if (logoPath) {
+      doc.image(logoPath, MARGIN_LEFT, headerTop, {
+        fit: [LOGO_WIDTH, LOGO_HEIGHT],
+      });
+    }
 
     const setFont = (bold = false, size = 11) => {
       doc.font(bold ? 'Sarabun-Bold' : 'Sarabun').fontSize(size);
       doc.fillColor('#111111');
     };
 
+    let companyY = headerTop;
     setFont(true, 12);
-    doc.text(QUOTATION_COMPANY.name, MARGIN_LEFT, y, { width: CONTENT_WIDTH, align: 'right' });
-    y += 16;
+    doc.text(QUOTATION_COMPANY.name, companyX, companyY, { width: companyWidth, align: 'right' });
+    companyY += 16;
     setFont(false, 10);
-    doc.text(QUOTATION_COMPANY.address, MARGIN_LEFT, y, { width: CONTENT_WIDTH, align: 'right' });
-    y += 14;
-    doc.text(`Tax ID: ${QUOTATION_COMPANY.taxId}  Tel. ${QUOTATION_COMPANY.tel}`, MARGIN_LEFT, y, {
-      width: CONTENT_WIDTH,
+    doc.text(QUOTATION_COMPANY.address, companyX, companyY, { width: companyWidth, align: 'right' });
+    companyY += 14;
+    doc.text(`Tax ID: ${QUOTATION_COMPANY.taxId}  Tel. ${QUOTATION_COMPANY.tel}`, companyX, companyY, {
+      width: companyWidth,
       align: 'right',
     });
-    y += 12;
-    doc.text(QUOTATION_COMPANY.fax, MARGIN_LEFT, y, { width: CONTENT_WIDTH, align: 'right' });
-    y += 22;
+    companyY += 12;
+    doc.text(QUOTATION_COMPANY.fax, companyX, companyY, { width: companyWidth, align: 'right' });
+
+    y = Math.max(headerTop + LOGO_HEIGHT, companyY + 12) + 10;
 
     setFont(true, 15);
     doc.text('ใบเสนอราคา / QUOTATION', MARGIN_LEFT, y, { width: CONTENT_WIDTH, align: 'center' });
@@ -170,91 +257,125 @@ export function buildQuotationPdf(input: BuildQuotationPdfInput): Promise<Buffer
     y = metaY + (customerTel ? 64 : 52);
 
     const tableX = MARGIN_LEFT;
-    const colWidths = [34, 236, 64, 78, 83];
-    const headers = ['ลำดับ', '', 'จำนวนคน', 'ราคาต่อหน่วย', 'จำนวนเงิน'];
+    const colWidths = TABLE_COL_WIDTHS;
     const headerHeight = 24;
+    const footerHeight = FOOTER_ROW_HEIGHT * 3;
+    const descColWidth = colWidths[1];
 
-    doc.rect(tableX, y, CONTENT_WIDTH, headerHeight).fillAndStroke('#f3f4f6', '#333333');
-    let colX = tableX;
+    const dataRowHeights = tableRows.map(row => {
+      const blocks = buildDescriptionBlocks(row);
+      return measureDescriptionHeight(doc, blocks, descColWidth, setFont);
+    });
+    const bodyHeight = dataRowHeights.reduce((sum, height) => sum + height, 0);
+    const tableHeight = headerHeight + bodyHeight + footerHeight;
+
+    doc.rect(tableX, y, CONTENT_WIDTH, tableHeight).stroke(TABLE_BORDER);
+
+    for (let col = 1; col < colWidths.length; col += 1) {
+      const lineX = columnX(tableX, colWidths, col);
+      doc.moveTo(lineX, y).lineTo(lineX, y + tableHeight).stroke(TABLE_BORDER);
+    }
+
+    doc.rect(tableX, y, CONTENT_WIDTH, headerHeight).fillAndStroke(HEADER_BG, TABLE_BORDER);
+    const headers = ['ลำดับ', 'รายการ', 'จำนวนคน', 'ราคาต่อหน่วย', 'จำนวนเงิน'];
     headers.forEach((header, index) => {
       setFont(true, 9);
-      const align = index === 0 ? 'center' : index >= 2 ? 'right' : 'left';
-      const pad = index === 0 ? 0 : 4;
-      doc.fillColor('#111111').text(header, colX + pad, y + 7, {
-        width: colWidths[index] - pad * 2,
-        align,
+      const cellX = columnX(tableX, colWidths, index);
+      doc.fillColor('#111111').text(header, cellX, y + 7, {
+        width: colWidths[index],
+        align: 'center',
       });
-      colX += colWidths[index];
     });
-    y += headerHeight;
 
-    const drawRow = (row: QuoteLineInput) => {
-      const descParts = [row.title];
-      if (row.subtitle) descParts.push(row.subtitle);
-      if (row.gradeLine) descParts.push(row.gradeLine);
-      const descText = descParts.join('\n');
+    let rowY = y + headerHeight;
+    doc.moveTo(tableX, rowY).lineTo(tableX + CONTENT_WIDTH, rowY).stroke(TABLE_BORDER);
+
+    tableRows.forEach((row, rowIndex) => {
+      const rowHeight = dataRowHeights[rowIndex];
+      const blocks = buildDescriptionBlocks(row);
 
       setFont(false, 9);
-      const descHeight = doc.heightOfString(descText, { width: colWidths[1] - 8 });
-      const rowHeight = Math.max(36, descHeight + 16);
-
-      doc.rect(tableX, y, CONTENT_WIDTH, rowHeight).stroke('#cccccc');
-      colX = tableX;
-
-      doc.fillColor('#111111').text(String(row.index), colX, y + 10, { width: colWidths[0], align: 'center' });
-      colX += colWidths[0];
-      doc.text(descText, colX + 4, y + 8, { width: colWidths[1] - 8 });
-      colX += colWidths[1];
-      doc.text(String(row.quantity), colX, y + 10, { width: colWidths[2] - 4, align: 'right' });
-      colX += colWidths[2];
-      doc.text(formatMoney(row.unitPrice), colX, y + 10, { width: colWidths[3] - 4, align: 'right' });
-      colX += colWidths[3];
-      doc.text(formatMoney(row.lineTotal), colX, y + 10, { width: colWidths[4] - 4, align: 'right' });
-
-      y += rowHeight;
-    };
-
-    if (lines.length === 0) {
-      drawRow({ index: 1, title: '-', quantity: 0, unitPrice: 0, lineTotal: 0 });
-    } else {
-      lines.forEach(drawRow);
-    }
-
-    y += 14;
-
-    if (allScope.length > 0) {
-      setFont(true, 10);
-      doc.text('Scope of work', MARGIN_LEFT, y);
-      y += 14;
-      setFont(false, 9.5);
-      allScope.forEach((scopeLine, index) => {
-        const text = `${index + 1}. ${scopeLine}`;
-        doc.text(text, MARGIN_LEFT + 4, y, { width: CONTENT_WIDTH - 8 });
-        y += doc.heightOfString(text, { width: CONTENT_WIDTH - 8 }) + 3;
+      doc.text(String(row.index), columnX(tableX, colWidths, 0), rowY + CELL_PAD, {
+        width: colWidths[0],
+        align: 'center',
       });
-      y += 8;
+      drawDescriptionBlocks(doc, blocks, columnX(tableX, colWidths, 1), rowY, colWidths[1], setFont);
+      doc.text(String(row.quantity), columnX(tableX, colWidths, 2) + CELL_PAD, rowY + CELL_PAD, {
+        width: colWidths[2] - CELL_PAD * 2,
+        align: 'center',
+      });
+      doc.text(formatMoney(row.unitPrice), columnX(tableX, colWidths, 3) + CELL_PAD, rowY + CELL_PAD, {
+        width: colWidths[3] - CELL_PAD * 2,
+        align: 'right',
+      });
+      doc.text(formatMoney(row.lineTotal), columnX(tableX, colWidths, 4) + CELL_PAD, rowY + CELL_PAD, {
+        width: colWidths[4] - CELL_PAD * 2,
+        align: 'right',
+      });
+
+      rowY += rowHeight;
+      if (rowIndex < tableRows.length - 1) {
+        doc.moveTo(tableX, rowY).lineTo(tableX + CONTENT_WIDTH, rowY).stroke(TABLE_BORDER);
+      }
+    });
+
+    const footerY = y + headerHeight + bodyHeight;
+    doc.moveTo(tableX, footerY).lineTo(tableX + CONTENT_WIDTH, footerY).stroke(TABLE_BORDER);
+
+    const wordsBoxWidth = columnsWidth(colWidths, 0, 2);
+    const totalsX = tableX + wordsBoxWidth;
+    const totalsWidth = columnsWidth(colWidths, 3, 4);
+    const labelWidth = colWidths[3];
+    const valueWidth = colWidths[4];
+
+    doc.moveTo(totalsX, footerY).lineTo(totalsX, footerY + footerHeight).stroke(TABLE_BORDER);
+    doc.moveTo(totalsX + labelWidth, footerY).lineTo(totalsX + labelWidth, footerY + footerHeight).stroke(TABLE_BORDER);
+
+    for (let footerRow = 1; footerRow < 3; footerRow += 1) {
+      const lineY = footerY + footerRow * FOOTER_ROW_HEIGHT;
+      doc.moveTo(totalsX, lineY).lineTo(totalsX + totalsWidth, lineY).stroke(TABLE_BORDER);
     }
+
+    const amountWords = thaiBahtText(totals.grandTotal);
+    setFont(true, 10);
+    const wordsTextHeight = doc.heightOfString(amountWords, { width: wordsBoxWidth - CELL_PAD * 2 });
+    const wordsTextY = footerY + Math.max(CELL_PAD, (footerHeight - wordsTextHeight) / 2);
+    doc.text(amountWords, tableX + CELL_PAD, wordsTextY, {
+      width: wordsBoxWidth - CELL_PAD * 2,
+      align: 'center',
+    });
+
+    const footerTotals = [
+      { label: 'รวมราคา', value: formatMoney(totals.beforeVat), bold: false },
+      { label: `ภาษีมูลค่าเพิ่ม ${totals.vatPercent}%`, value: formatMoney(totals.vat), bold: false },
+      { label: 'จำนวนเงินรวมทั้งสิ้น', value: formatMoney(totals.grandTotal), bold: true },
+    ];
+
+    footerTotals.forEach((row, index) => {
+      const cellY = footerY + index * FOOTER_ROW_HEIGHT;
+      setFont(row.bold, 9);
+      doc.text(row.label, totalsX + CELL_PAD, cellY + 5, {
+        width: labelWidth - CELL_PAD * 2,
+        align: 'left',
+      });
+      doc.text(row.value, totalsX + labelWidth + CELL_PAD, cellY + 5, {
+        width: valueWidth - CELL_PAD * 2,
+        align: 'right',
+      });
+    });
+
+    y += tableHeight + 14;
 
     setFont(true, 10);
-    doc.text('รวมราคา', MARGIN_LEFT, y, { width: CONTENT_WIDTH - 90, align: 'right' });
-    doc.text(formatMoney(totals.beforeVat), MARGIN_LEFT, y, { width: CONTENT_WIDTH, align: 'right' });
-    y += 16;
-
-    setFont(false, 10);
-    doc.text(`หมายเหตุ: ภาษีมูลค่าเพิ่ม ${totals.vatPercent}%`, MARGIN_LEFT, y, {
-      width: CONTENT_WIDTH - 90,
-      align: 'right',
-    });
-    doc.text(formatMoney(totals.vat), MARGIN_LEFT, y, { width: CONTENT_WIDTH, align: 'right' });
-    y += 18;
-
+    doc.text('หมายเหตุ:', MARGIN_LEFT, y);
+    y += 14;
     setFont(false, 9.5);
     const bankLine = `1. โอนเงินเข้าบัญชี ${QUOTATION_COMPANY.bankName} ${QUOTATION_COMPANY.bankAccountType} เลขที่ ${QUOTATION_COMPANY.bankAccountNumber} จำนวนเงินรวมทั้งสิ้น ${formatMoney(totals.grandTotal)}`;
-    doc.text(bankLine, MARGIN_LEFT, y, { width: CONTENT_WIDTH });
-    y += doc.heightOfString(bankLine, { width: CONTENT_WIDTH }) + 4;
+    doc.text(bankLine, MARGIN_LEFT + 4, y, { width: CONTENT_WIDTH - 4 });
+    y += doc.heightOfString(bankLine, { width: CONTENT_WIDTH - 4 }) + 4;
     const boiLine = `2. ${QUOTATION_COMPANY.boiCertificate}`;
-    doc.text(boiLine, MARGIN_LEFT, y, { width: CONTENT_WIDTH });
-    y += doc.heightOfString(boiLine, { width: CONTENT_WIDTH }) + 22;
+    doc.text(boiLine, MARGIN_LEFT + 4, y, { width: CONTENT_WIDTH - 4 });
+    y += doc.heightOfString(boiLine, { width: CONTENT_WIDTH - 4 }) + 22;
 
     const sigColWidth = (CONTENT_WIDTH - 24) / 2;
     const sigLeftX = MARGIN_LEFT;
@@ -272,13 +393,7 @@ export function buildQuotationPdf(input: BuildQuotationPdfInput): Promise<Buffer
     doc.text('ผู้เสนอราคา', sigLeftX, sigBlockY + 18, { width: sigColWidth, align: 'center' });
     doc.text('ผู้รับบริการ', sigRightX, sigBlockY + 18, { width: sigColWidth, align: 'center' });
 
-    setFont(false, 10);
-    doc.text(thaiBahtText(totals.grandTotal), MARGIN_LEFT, sigBlockY + 42, {
-      width: CONTENT_WIDTH,
-      align: 'center',
-    });
-
-    const signY = sigBlockY + 72;
+    const signY = sigBlockY + 48;
     doc.moveTo(sigLeftX + 28, signY).lineTo(sigLeftX + sigColWidth - 28, signY).stroke('#333333');
     setFont(true, 10);
     doc.text(QUOTATION_COMPANY.signatoryName, sigLeftX, signY + 6, { width: sigColWidth, align: 'center' });
