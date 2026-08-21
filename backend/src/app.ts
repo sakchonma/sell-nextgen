@@ -34,6 +34,16 @@ import {
   syncTaskToLead,
   logActivity
 } from './services/activity-sync.service.js';
+import {
+  createActivityType,
+  deactivateActivityType,
+  ensureActivityTypesSeeded,
+  findActivityTypeByCode,
+  isValidActivityType,
+  listActivityTypes,
+  updateActivityType
+} from './services/activity-types.service.js';
+import type { ActivityTypeScope } from './types/index.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
 import { hashPassword, validatePasswordPolicy, verifyPassword } from './utils/password.js';
 import { doTimeRangesOverlap, evaluateAvailability } from './utils/schedule.js';
@@ -411,7 +421,7 @@ const opportunityStageBodySchema = z.object({
   message: 'ต้องระบุเหตุผลเมื่อเปลี่ยนเป็น Lost'
 });
 
-const taskTypeSchema = z.enum(['Call', 'Meeting', 'Presentation', 'Demo', 'FollowUp', 'Other']);
+const taskTypeSchema = z.string().trim().min(1, 'ต้องระบุประเภทกิจกรรม');
 const taskStatusSchema = z.enum(['Pending', 'Completed', 'Overdue']);
 const recurrenceRuleSchema = z.enum(['none', 'daily', 'weekly', 'monthly']);
 const createTaskBodySchema = z.object({
@@ -472,9 +482,46 @@ const taskCommentBodySchema = z.object({
   content: nonEmptyTextSchema
 }).strict();
 
+const activityTypeScopeSchema = z.enum(['task', 'log', 'note']);
+const createActivityTypeBodySchema = z.object({
+  code: z.string().trim().min(2).max(40),
+  label: nonEmptyTextSchema,
+  labelTh: optionalTextSchema,
+  scopes: z.array(activityTypeScopeSchema).min(1),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+  allowCustomLabel: z.boolean().optional()
+}).strict();
+
+const updateActivityTypeBodySchema = z.object({
+  label: nonEmptyTextSchema.optional(),
+  labelTh: optionalTextSchema,
+  scopes: z.array(activityTypeScopeSchema).min(1).optional(),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+  isActive: z.boolean().optional(),
+  allowCustomLabel: z.boolean().optional()
+}).strict();
+
+function requireActivityType(scope: ActivityTypeScope, field = 'type') {
+  return async (req: any, res: any, next: any) => {
+    const value = req.body?.[field];
+    if (value === undefined) return next();
+    if (!(await isValidActivityType(value, scope))) {
+      res.status(400).json({ message: 'ประเภทกิจกรรมไม่ถูกต้องหรือถูกปิดใช้งาน' });
+      return;
+    }
+    next();
+  };
+}
+
+async function normalizeTaskTypeLabel(type: string, typeLabel?: string) {
+  const cfg = await findActivityTypeByCode(type);
+  if (cfg?.allowCustomLabel && typeLabel?.trim()) return typeLabel.trim();
+  return undefined;
+}
+
 const logActivityBodySchema = z.object({
   leadId: idSchema,
-  type: z.enum(['Call', 'Email', 'Meeting', 'FollowUp']),
+  type: z.string().trim().min(1),
   content: nonEmptyTextSchema,
   startAt: dateStringSchema,
   endAt: dateStringSchema.optional(),
@@ -567,7 +614,7 @@ const leadContactSchema = z.object({
 const leadNoteSchema = z.object({
   author: nonEmptyTextSchema,
   content: nonEmptyTextSchema,
-  type: z.enum(['General', 'Call', 'Meeting', 'Coaching', 'FollowUp', 'Email']).default('General'),
+  type: z.string().trim().min(1).default('General'),
   createdAt: dateStringSchema.optional()
 }).passthrough();
 
@@ -2465,6 +2512,15 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
       return;
     }
   }
+  if (notes?.length) {
+    for (const note of notes) {
+      const noteType = note.type || 'General';
+      if (!(await isValidActivityType(noteType, 'note'))) {
+        res.status(400).json({ message: `ประเภทบันทึก "${noteType}" ไม่ถูกต้องหรือถูกปิดใช้งาน` });
+        return;
+      }
+    }
+  }
   const isTransfer = assignedTo && assignedTo !== lead.assignedTo;
   const assignmentHistory = isTransfer
     ? [
@@ -2994,7 +3050,7 @@ app.get('/api/activities', requirePermission('manageTasks'), async (req, res) =>
   res.json({ feed, upcoming });
 });
 
-app.post('/api/activities/log', requirePermission('manageTasks'), validateBody(logActivityBodySchema), async (req, res) => {
+app.post('/api/activities/log', requirePermission('manageTasks'), validateBody(logActivityBodySchema), requireActivityType('log'), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
     res.status(401).json({ message: 'Unauthorized' });
@@ -3119,7 +3175,7 @@ app.post('/api/tasks/conflicts', requirePermission('manageTasks'), validateBody(
   res.json({ hasConflict: conflicts.length > 0, conflicts });
 });
 
-app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTaskBodySchema), async (req, res) => {
+app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTaskBodySchema), requireActivityType('task'), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
     res.status(401).json({ message: 'Unauthorized' });
@@ -3129,6 +3185,7 @@ app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTask
   const { title, description, type, typeLabel, startAt, endAt, leadId, opportunityId, requestId, participantIds, reminderMinutesBefore, recurrenceRule, recurrenceCount } = req.body;
   const taskStart = new Date(startAt);
   const taskEnd = new Date(endAt);
+  const normalizedTypeLabel = await normalizeTaskTypeLabel(type || 'Meeting', typeLabel);
   const uniqueParticipantIds = Array.from(new Set([currentUser._id, ...(participantIds || [])]));
   const baseConflicts = findTaskConflicts(await findAll<any>(Tasks()), uniqueParticipantIds, taskStart, taskEnd);
   
@@ -3146,7 +3203,7 @@ app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTask
       title,
       description,
       type: type || 'Meeting',
-      typeLabel: type === 'Other' ? typeLabel || undefined : undefined,
+      typeLabel: normalizedTypeLabel,
       status: 'Pending',
       startAt: recurringStart,
       endAt: recurringEnd,
@@ -3182,7 +3239,7 @@ app.post('/api/tasks', requirePermission('manageTasks'), validateBody(createTask
   res.status(201).json({ tasks: createdTasks, conflicts: baseConflicts });
 });
 
-app.put('/api/tasks/:id', requirePermission('manageTasks'), validateBody(updateTaskBodySchema), async (req, res) => {
+app.put('/api/tasks/:id', requirePermission('manageTasks'), validateBody(updateTaskBodySchema), requireActivityType('task'), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
     res.status(401).json({ message: 'Unauthorized' });
@@ -3209,9 +3266,13 @@ app.put('/api/tasks/:id', requirePermission('manageTasks'), validateBody(updateT
     const existing = (task.participants || []).find((p: any) => p.userId === id);
     return existing || { userId: id, status: id === task.creatorId ? 'Accepted' : 'Pending' };
   });
+  const nextType = req.body.type || task.type;
+  const normalizedTypeLabel = await normalizeTaskTypeLabel(nextType, req.body.typeLabel ?? task.typeLabel);
   const updatedTask = {
     ...task,
     ...req.body,
+    type: nextType,
+    typeLabel: normalizedTypeLabel,
     startAt: start,
     endAt: end,
     participants,
@@ -3825,6 +3886,82 @@ app.put('/api/discount-settings', requirePermission('manageDiscounts'), validate
     after: updatedSettings
   });
   res.json(updatedSettings);
+});
+
+// ------------------------------------------------------------------------------
+// ACTIVITY TYPES (admin-configurable)
+// ------------------------------------------------------------------------------
+app.get('/api/activity-types', requireAuthenticated(), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  const scope = typeof req.query.scope === 'string' ? req.query.scope as ActivityTypeScope : undefined;
+  const includeInactive = req.query.includeInactive === '1';
+  if (includeInactive) {
+    if (currentUser.rank < 4) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+    const rows = await ensureActivityTypesSeeded();
+    res.json(rows.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'th')));
+    return;
+  }
+  if (scope && !['task', 'log', 'note'].includes(scope)) {
+    res.status(400).json({ message: 'scope ไม่ถูกต้อง' });
+    return;
+  }
+  res.json(await listActivityTypes(scope));
+});
+
+app.post('/api/activity-types', requireAuthenticated(), requireRank(4), validateBody(createActivityTypeBodySchema), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  try {
+    const created = await createActivityType(req.body);
+    await createAuditLog(req, currentUser, 'activity_type.create', 'activity_type', created, { after: created });
+    res.status(201).json(created);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message || 'สร้างประเภทกิจกรรมไม่สำเร็จ' });
+  }
+});
+
+app.put('/api/activity-types/:id', requireAuthenticated(), requireRank(4), validateBody(updateActivityTypeBodySchema), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  try {
+    const typeId = String(req.params.id);
+    const before = (await ensureActivityTypesSeeded()).find(row => row._id === typeId);
+    const updated = await updateActivityType(typeId, req.body);
+    await createAuditLog(req, currentUser, 'activity_type.update', 'activity_type', updated, { before: before || null, after: updated });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(err.message === 'ไม่พบประเภทกิจกรรม' ? 404 : 400).json({ message: err.message || 'อัปเดตประเภทกิจกรรมไม่สำเร็จ' });
+  }
+});
+
+app.delete('/api/activity-types/:id', requireAuthenticated(), requireRank(4), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  try {
+    const typeId = String(req.params.id);
+    const before = (await ensureActivityTypesSeeded()).find(row => row._id === typeId);
+    const result = await deactivateActivityType(typeId);
+    await createAuditLog(req, currentUser, 'activity_type.deactivate', 'activity_type', before || { _id: typeId }, { before: before || null, after: result });
+    res.json(result);
+  } catch (err: any) {
+    res.status(err.message === 'ไม่พบประเภทกิจกรรม' ? 404 : 400).json({ message: err.message || 'ลบประเภทกิจกรรมไม่สำเร็จ' });
+  }
 });
 
 // ------------------------------------------------------------------------------

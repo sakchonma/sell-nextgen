@@ -4,6 +4,7 @@ import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { Activity, Bell, Clock, Phone, Mail, Users, RefreshCw } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { useActivityTypes } from '../hooks/useActivityTypes';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -21,6 +22,7 @@ const REMINDER_OPTIONS = [
 
 function ActivitiesComponent() {
   const { user } = useAuth();
+  const { selectOptions: logTypeOptions } = useActivityTypes('log');
   const [feed, setFeed] = useState<any[]>([]);
   const [upcoming, setUpcoming] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
@@ -171,10 +173,9 @@ function ActivitiesComponent() {
             <div>
               <label className="block text-[10px] text-slate-500 font-semibold mb-1">ประเภท</label>
               <select value={form.type} onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                <option value="Call">โทรออก</option>
-                <option value="Email">อีเมล</option>
-                <option value="Meeting">นัดประชุม</option>
-                <option value="FollowUp">Follow-up</option>
+                {logTypeOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-2">

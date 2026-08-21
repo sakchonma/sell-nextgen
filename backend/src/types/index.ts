@@ -128,7 +128,8 @@ export interface Task {
   _id: string;
   title: string;
   description?: string;
-  type: 'Call' | 'Meeting' | 'Demo' | 'FollowUp' | 'Other';
+  type: string;
+  typeLabel?: string;
   status: 'Pending' | 'Completed' | 'Overdue';
   startAt: Date;
   endAt: Date;
@@ -379,4 +380,20 @@ export interface AuditLog {
   ip?: string;
   userAgent?: string;
   createdAt: Date;
+}
+
+export type ActivityTypeScope = 'task' | 'log' | 'note';
+
+export interface ActivityTypeConfig {
+  _id: string;
+  code: string;
+  label: string;
+  labelTh?: string;
+  scopes: ActivityTypeScope[];
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  allowCustomLabel?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }

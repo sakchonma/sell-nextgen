@@ -1,6 +1,7 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { Route as RootRoute } from './__root';
+import { useActivityTypes } from '../hooks/useActivityTypes';
 import { useAuth } from '../hooks/useAuth';
 import {
   AlertCircle,
@@ -29,7 +30,7 @@ export const Route = createRoute({
   component: AILoggerComponent,
 });
 
-type TaskType = 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
+type TaskType = string;
 type UrgencyLevel = 'Low' | 'Medium' | 'High';
 
 interface MatchedLead {
@@ -100,16 +101,6 @@ interface SpeechRecognitionLike {
 }
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-const taskTypeOptions: Array<{ value: TaskType; label: string }> = [
-  { value: 'Call', label: 'Call' },
-  { value: 'Meeting', label: 'Meeting' },
-  { value: 'Presentation', label: 'Presentation' },
-  { value: 'Demo', label: 'Demo' },
-  { value: 'FollowUp', label: 'Follow up' },
-  { value: 'Other', label: 'Other' }
-];
-
 const urgencyOptions: Array<{ value: UrgencyLevel; label: string; className: string }> = [
   { value: 'Low', label: 'Low', className: 'border-slate-700 bg-slate-800/60 text-slate-300' },
   { value: 'Medium', label: 'Medium', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
@@ -158,6 +149,7 @@ async function getApiMessage(res: Response, fallback: string) {
 function AILoggerComponent() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectOptions: taskTypeOptions } = useActivityTypes('task');
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [recognitionSupported] = useState(() => Boolean(getSpeechRecognitionConstructor()));
 

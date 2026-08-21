@@ -18,6 +18,7 @@ import {
   FolderHeart,
   TrendingUp,
   Sliders,
+  ListTree,
   DollarSign,
   Bell,
   CheckCircle2,
@@ -343,6 +344,14 @@ function RootComponent() {
           >
             <Sliders size={18} />
             <span className={collapsed ? 'lg:hidden' : ''}>ตั้งค่าส่วนลด</span>
+          </Link>
+          <Link
+            to="/activity-types"
+            onClick={onNavigate}
+            className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          >
+            <ListTree size={18} />
+            <span className={collapsed ? 'lg:hidden' : ''}>ประเภทกิจกรรม</span>
           </Link>
         </>
       )}

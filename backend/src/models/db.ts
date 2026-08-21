@@ -15,8 +15,22 @@ const memoryDb: Record<string, any[]> = {
   discount_settings: [],
   notifications: [],
   ai_logs: [],
-  audit_logs: []
+  audit_logs: [],
+  activity_types: [],
 };
+
+const initialActivityTypes = [
+  { _id: 'at_call', code: 'Call', label: 'Call', labelTh: 'โทรออก', scopes: ['task', 'log', 'note'], sortOrder: 1, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_meeting', code: 'Meeting', label: 'Meeting', labelTh: 'นัดประชุม', scopes: ['task', 'log', 'note'], sortOrder: 2, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_presentation', code: 'Presentation', label: 'Presentation', labelTh: 'นำเสนอ', scopes: ['task'], sortOrder: 3, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_demo', code: 'Demo', label: 'Demo', labelTh: 'สาธิต', scopes: ['task'], sortOrder: 4, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_followup', code: 'FollowUp', label: 'Follow up', labelTh: 'ติดตามงาน', scopes: ['task', 'log', 'note'], sortOrder: 5, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_email', code: 'Email', label: 'Email', labelTh: 'อีเมล', scopes: ['log', 'note'], sortOrder: 6, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_general', code: 'General', label: 'General', labelTh: 'ทั่วไป', scopes: ['note'], sortOrder: 7, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_coaching', code: 'Coaching', label: 'Coaching', labelTh: 'Coaching', scopes: ['note'], sortOrder: 8, isActive: true, isSystem: true, allowCustomLabel: false, createdAt: new Date(), updatedAt: new Date() },
+  { _id: 'at_other', code: 'Other', label: 'Other', labelTh: 'อื่นๆ', scopes: ['task'], sortOrder: 99, isActive: true, isSystem: true, allowCustomLabel: true, createdAt: new Date(), updatedAt: new Date() },
+];
+memoryDb.activity_types = initialActivityTypes;
 
 // Seed initial roles and users in memory in case MongoDB is not running
 const initialRoles: Types.Role[] = [
@@ -300,4 +314,5 @@ export const Notifications = () => getCollection<Types.Notification>('notificati
 export const DiscountLimits = () => getCollection<Types.DiscountLimit>('discount_settings');
 export const AILogs = () => getCollection<Types.AILog>('ai_logs');
 export const AuditLogs = () => getCollection<Types.AuditLog>('audit_logs');
+export const ActivityTypes = () => getCollection<Types.ActivityTypeConfig>('activity_types');
 export const MemoryStore = memoryDb;

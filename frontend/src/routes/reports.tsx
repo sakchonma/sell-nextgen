@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
 import { BarChart3, CalendarClock, Download, FileText, GitBranch, Printer, School, Search, TrendingUp, X } from 'lucide-react';
 import { apiFetch } from '../lib/api';
-import { TASK_TYPES, formatTaskType } from '../lib/task-types';
+import { useActivityTypes } from '../hooks/useActivityTypes';
+import { formatTaskType } from '../lib/task-types';
 import { ModalShell, PaginationControls } from '../components/ui';
 
 export const Route = createRoute({
@@ -12,7 +13,7 @@ export const Route = createRoute({
   component: ReportsComponent,
 });
 
-type ActivityTypeFilter = 'all' | 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
+type ActivityTypeFilter = 'all' | string;
 type DetailModalKey =
   | 'approved'
   | 'pending'
@@ -24,6 +25,7 @@ type DetailModalKey =
   | null;
 
 const MODAL_PAGE_SIZE = 15;
+const ACTIVITY_PAGE_SIZE = 10;
 
 function formatFilterDate(value: string) {
   if (!value) return '';
@@ -31,6 +33,7 @@ function formatFilterDate(value: string) {
 }
 
 function ReportsComponent() {
+  const { types: taskTypes, selectOptions: taskTypeOptions } = useActivityTypes('task');
   const [leads, setLeads] = useState<any[]>([]);
   const [reportSummary, setReportSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +41,7 @@ function ReportsComponent() {
   const [dateTo, setDateTo] = useState('');
   const [activityType, setActivityType] = useState<ActivityTypeFilter>('all');
   const [activitySearch, setActivitySearch] = useState('');
+  const [activityPage, setActivityPage] = useState(1);
   const [detailModal, setDetailModal] = useState<DetailModalKey>(null);
   const [modalPage, setModalPage] = useState(1);
 
@@ -58,6 +62,10 @@ function ReportsComponent() {
       })
       .finally(() => setLoading(false));
   }, [dateFrom, dateTo, activityType]);
+
+  useEffect(() => {
+    setActivityPage(1);
+  }, [activitySearch, dateFrom, dateTo, activityType]);
 
   const leadById = (id?: string) => leads.find(lead => lead._id === id);
   const metrics = reportSummary?.metrics || {};
@@ -98,7 +106,7 @@ function ReportsComponent() {
       parts.push('แสดงทั้งหมด');
     }
     if (activityType !== 'all') {
-      parts.push(`ประเภท: ${formatTaskType(activityType)}`);
+      parts.push(`ประเภท: ${formatTaskType(activityType, undefined, taskTypes)}`);
     }
     return parts.join(' · ');
   }, [dateFrom, dateTo, activityType]);
@@ -109,7 +117,7 @@ function ReportsComponent() {
     return activities.filter((activity: any) => {
       if (!q) return true;
       const school = leadById(activity.leadId)?.schoolName || '';
-      const typeText = formatTaskType(activity.type, activity.typeLabel);
+      const typeText = formatTaskType(activity.type, activity.typeLabel, taskTypes);
       return (
         String(activity.title || '').toLowerCase().includes(q) ||
         school.toLowerCase().includes(q) ||
@@ -117,6 +125,11 @@ function ReportsComponent() {
       );
     });
   }, [reportSummary?.activities, activitySearch, leads]);
+
+  const pagedActivities = useMemo(() => {
+    const start = (activityPage - 1) * ACTIVITY_PAGE_SIZE;
+    return sortedActivities.slice(start, start + ACTIVITY_PAGE_SIZE);
+  }, [sortedActivities, activityPage]);
 
   const exportCsv = () => {
     const rows = [
@@ -222,13 +235,13 @@ function ReportsComponent() {
             <label className="block text-[10px] font-bold text-slate-500 mb-1">ประเภทกิจกรรม</label>
             <select value={activityType} onChange={(e) => setActivityType(e.target.value as ActivityTypeFilter)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
               <option value="all">ทั้งหมด</option>
-              {TASK_TYPES.map(opt => (
+              {taskTypeOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
           <div className="flex items-end">
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); closeDetailModal(); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
+            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); setActivityPage(1); closeDetailModal(); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
               ล้างตัวกรอง
             </button>
           </div>
@@ -387,7 +400,7 @@ function ReportsComponent() {
                       <div>
                         <div className="text-base font-bold text-slate-100">{row.title}</div>
                         <div className="text-sm text-slate-400 mt-1">
-                          {formatTaskType(row.type, row.typeLabel)}
+                          {formatTaskType(row.type, row.typeLabel, taskTypes)}
                           {leadById(row.leadId)?.schoolName ? ` · ${leadById(row.leadId)?.schoolName}` : ''}
                         </div>
                       </div>
@@ -503,35 +516,52 @@ function ReportsComponent() {
 
       <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">กิจกรรมล่าสุด ({loading ? '...' : sortedActivities.length})</h3>
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-400">
+            กิจกรรมล่าสุด ({loading ? '...' : sortedActivities.length})
+          </h3>
           <div className="relative max-w-xs w-full">
-            <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+            <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
             <input
               type="search"
               value={activitySearch}
               onChange={e => setActivitySearch(e.target.value)}
               placeholder="ค้นหากิจกรรม..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200"
             />
           </div>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-800">
-          {sortedActivities.map((activity: any) => (
-            <div key={activity._id} className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="divide-y divide-slate-800 min-h-[320px]">
+          {pagedActivities.map((activity: any) => (
+            <div key={activity._id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel)}</span>
-                <h4 className="mt-1 text-xs font-semibold text-slate-200">{activity.title}</h4>
-                <p className="text-[10px] text-slate-500 line-clamp-1">{activity.description || leadById(activity.leadId)?.schoolName || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                <span className="inline-block px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel, taskTypes)}</span>
+                <h4 className="mt-2 text-sm font-semibold text-slate-200">{activity.title}</h4>
+                <p className="text-xs text-slate-500 line-clamp-1 mt-1">{activity.description || leadById(activity.leadId)?.schoolName || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
               </div>
-              <span className="text-[10px] text-slate-500 shrink-0">
+              <span className="text-xs text-slate-500 shrink-0">
                 {new Date(activity.startAt || activity.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
               </span>
             </div>
           ))}
           {!loading && sortedActivities.length === 0 && (
-            <div className="py-12 text-center text-slate-500 text-xs">ยังไม่มีข้อมูลกิจกรรมสำหรับรายงาน</div>
+            <div className="py-12 text-center text-slate-500 text-sm">ยังไม่มีข้อมูลกิจกรรมสำหรับรายงาน</div>
           )}
         </div>
+        {!loading && sortedActivities.length > 0 && (
+          <div className="pt-2 border-t border-slate-800">
+            <div className="text-sm text-slate-400 mb-3">
+              แสดง {pagedActivities.length} จาก {sortedActivities.length} รายการ · หน้าละ {ACTIVITY_PAGE_SIZE} รายการ
+            </div>
+            <div className="text-sm [&_button]:text-sm [&_button]:px-4 [&_button]:py-2.5 [&_span]:text-sm">
+              <PaginationControls
+                page={activityPage}
+                total={sortedActivities.length}
+                limit={ACTIVITY_PAGE_SIZE}
+                onPageChange={setActivityPage}
+              />
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

@@ -25,7 +25,8 @@ import { EventDateTimeFields } from '../components/event-datetime';
 import { apiFetch, apiJson } from '../lib/api';
 import { defaultEventSchedule, eventScheduleFromRange, isSameLocalDay, resolveEventRange } from '../lib/datetime';
 import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
-import { TASK_TYPES, formatTaskType } from '../lib/task-types';
+import { useActivityTypes } from '../hooks/useActivityTypes';
+import { formatTaskType, typeAllowsCustomLabel } from '../lib/task-types';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -35,6 +36,7 @@ export const Route = createRoute({
 
 function TasksComponent() {
   const { user } = useAuth();
+  const { types: taskTypes, selectOptions: taskTypeOptions } = useActivityTypes('task');
   const [tasks, setTasks] = useState<any[]>([]);
   const [coworkers, setCoworkers] = useState<User[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
@@ -165,7 +167,7 @@ function TasksComponent() {
       title,
       description,
       type,
-      typeLabel: type === 'Other' ? typeLabel.trim() || undefined : undefined,
+      typeLabel: typeAllowsCustomLabel(taskTypes, type) ? typeLabel.trim() || undefined : undefined,
       startAt: range.startAt.toISOString(),
       endAt: range.endAt.toISOString(),
       leadId: leadId || undefined,
@@ -272,7 +274,7 @@ function TasksComponent() {
     if (!q) return true;
     const school = leadById(t.leadId)?.schoolName || '';
     const dateStr = new Date(t.startAt).toLocaleString('th-TH');
-    const typeText = formatTaskType(t.type, t.typeLabel);
+    const typeText = formatTaskType(t.type, t.typeLabel, taskTypes);
     return (
       String(t.title || '').toLowerCase().includes(q) ||
       school.toLowerCase().includes(q) ||
@@ -540,13 +542,13 @@ function TasksComponent() {
                   onChange={(e) => setType(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
-                  {TASK_TYPES.map(opt => (
+                  {taskTypeOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
               </div>
 
-              {type === 'Other' && (
+              {typeAllowsCustomLabel(taskTypes, type) && (
                 <div>
                   <label className="block text-xs text-slate-400 font-semibold mb-1">ระบุประเภทกิจกรรม</label>
                   <input

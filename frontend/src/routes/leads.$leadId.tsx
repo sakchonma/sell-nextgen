@@ -17,6 +17,8 @@ import {
   Save
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useActivityTypes } from '../hooks/useActivityTypes';
+import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
 
 const LEAD_STATUS_OPTIONS = ['Cold', 'Warm', 'Hot', 'Customer'];
@@ -36,6 +38,7 @@ function LeadDetailComponent() {
   const { leadId } = useParams({ from: '/leads/$leadId' });
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { types: noteTypes, selectOptions: noteTypeOptions } = useActivityTypes('note');
   const [lead, setLead] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
@@ -680,12 +683,9 @@ function LeadDetailComponent() {
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">เพิ่มบันทึกการประชุม/ความคืบหน้า (Notes)</h3>
               <form onSubmit={handleAddNote} className="space-y-3">
                 <select value={newNoteType} onChange={e => setNewNoteType(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                  <option value="General">General</option>
-                  <option value="Call">Call</option>
-                  <option value="Meeting">Meeting</option>
-                  <option value="FollowUp">FollowUp</option>
-                  <option value="Email">Email</option>
-                  <option value="Coaching">Coaching</option>
+                  {noteTypeOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
                 <textarea
                   value={newNoteContent}
@@ -715,12 +715,9 @@ function LeadDetailComponent() {
                     {editingNoteKey === noteKey(note) ? (
                       <form onSubmit={handleSaveNoteEdit} className="space-y-2">
                         <select value={editNoteType} onChange={e => setEditNoteType(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                          <option value="General">General</option>
-                          <option value="Call">Call</option>
-                          <option value="Meeting">Meeting</option>
-                          <option value="FollowUp">FollowUp</option>
-                          <option value="Email">Email</option>
-                          <option value="Coaching">Coaching</option>
+                          {noteTypeOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
                         </select>
                         <textarea value={editNoteContent} onChange={e => setEditNoteContent(e.target.value)} rows={3} className="w-full p-3 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" required />
                         <div className="flex gap-2 justify-end">
@@ -732,7 +729,7 @@ function LeadDetailComponent() {
                       <>
                         <div className="flex justify-between items-center gap-2">
                           <span className="text-[10.5px] font-semibold text-indigo-400 flex items-center gap-1">
-                            <User size={10} /> {note.author} · {note.type || 'General'}
+                            <User size={10} /> {note.author} · {formatTaskType(note.type || 'General', undefined, noteTypes)}
                           </span>
                           <div className="flex items-center gap-2">
                             <span className="text-[9px] text-slate-500">{new Date(note.createdAt).toLocaleString('th-TH')}</span>

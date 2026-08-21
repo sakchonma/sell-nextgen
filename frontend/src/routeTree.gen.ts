@@ -21,6 +21,7 @@ import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as AiLoggerRouteImport } from './routes/ai-logger'
 import { Route as AdminCalendarRouteImport } from './routes/admin-calendar'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ActivityTypesRouteImport } from './routes/activity-types'
 import { Route as ActivitiesRouteImport } from './routes/activities'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests.index'
@@ -90,6 +91,11 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ActivityTypesRoute = ActivityTypesRouteImport.update({
+  id: '/activity-types',
+  path: '/activity-types',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ActivitiesRoute = ActivitiesRouteImport.update({
   id: '/activities',
   path: '/activities',
@@ -134,6 +140,7 @@ const LeadsLeadIdRoute = LeadsLeadIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
+  '/activity-types': typeof ActivityTypesRoute
   '/admin': typeof AdminRoute
   '/admin-calendar': typeof AdminCalendarRoute
   '/ai-logger': typeof AiLoggerRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
+  '/activity-types': typeof ActivityTypesRoute
   '/admin': typeof AdminRoute
   '/admin-calendar': typeof AdminCalendarRoute
   '/ai-logger': typeof AiLoggerRoute
@@ -179,6 +187,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
+  '/activity-types': typeof ActivityTypesRoute
   '/admin': typeof AdminRoute
   '/admin-calendar': typeof AdminCalendarRoute
   '/ai-logger': typeof AiLoggerRoute
@@ -203,6 +212,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/activities'
+    | '/activity-types'
     | '/admin'
     | '/admin-calendar'
     | '/ai-logger'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/activities'
+    | '/activity-types'
     | '/admin'
     | '/admin-calendar'
     | '/ai-logger'
@@ -247,6 +258,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/activities'
+    | '/activity-types'
     | '/admin'
     | '/admin-calendar'
     | '/ai-logger'
@@ -270,6 +282,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivitiesRoute: typeof ActivitiesRoute
+  ActivityTypesRoute: typeof ActivityTypesRoute
   AdminRoute: typeof AdminRoute
   AdminCalendarRoute: typeof AdminCalendarRoute
   AiLoggerRoute: typeof AiLoggerRoute
@@ -376,6 +389,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/activity-types': {
+      id: '/activity-types'
+      path: '/activity-types'
+      fullPath: '/activity-types'
+      preLoaderRoute: typeof ActivityTypesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/activities': {
       id: '/activities'
       path: '/activities'
@@ -438,6 +458,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivitiesRoute: ActivitiesRoute,
+  ActivityTypesRoute: ActivityTypesRoute,
   AdminRoute: AdminRoute,
   AdminCalendarRoute: AdminCalendarRoute,
   AiLoggerRoute: AiLoggerRoute,
