@@ -1,10 +1,11 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
-import { BarChart3, CalendarClock, Download, FileText, GitBranch, Printer, School, Search, TrendingUp, X } from 'lucide-react';
+import { BarChart3, CalendarClock, ChevronRight, Download, FileText, GitBranch, Printer, School, Search, TrendingUp, X } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
+import { getPipelineColumnStyle } from '../lib/sales-funnel-stages';
 import { ModalShell, PaginationControls } from '../components/ui';
 
 export const Route = createRoute({
@@ -22,6 +23,19 @@ type DetailModalKey =
   | 'overdueInRange'
   | 'slaCompleted'
   | 'slaBreached'
+  | 'funnelCall'
+  | 'funnelMeeting'
+  | 'funnelPresentation'
+  | 'funnelDemoWorkshop'
+  | 'funnelQuotation'
+  | 'funnelWon'
+  | 'funnelLost'
+  | 'activityCall'
+  | 'activityMeeting'
+  | 'activityPresentation'
+  | 'activityDemoWorkshop'
+  | 'activityQuotation'
+  | 'activityWon'
   | null;
 
 const MODAL_PAGE_SIZE = 15;
@@ -74,7 +88,38 @@ function ReportsComponent() {
     () => (Array.isArray(reportSummary?.salesFunnel?.stages) ? reportSummary.salesFunnel.stages : []),
     [reportSummary?.salesFunnel?.stages]
   );
+  const funnelStageByCode = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const row of salesFunnelStages) map.set(row.code, row);
+    return map;
+  }, [salesFunnelStages]);
+
+  const funnelModalKeyByCode: Record<string, Exclude<DetailModalKey, null>> = {
+    Call: 'funnelCall',
+    Meeting: 'funnelMeeting',
+    Presentation: 'funnelPresentation',
+    DemoWorkshop: 'funnelDemoWorkshop',
+    Quotation: 'funnelQuotation',
+    Won: 'funnelWon',
+    Lost: 'funnelLost',
+  };
+
+  const activityTaskKeyByCode: Record<string, Exclude<DetailModalKey, null>> = {
+    Call: 'activityCall',
+    Meeting: 'activityMeeting',
+    Presentation: 'activityPresentation',
+    DemoWorkshop: 'activityDemoWorkshop',
+  };
   const activityBreakdown = reportSummary?.activityBreakdown;
+
+  const visibleFunnelStages = useMemo(
+    () => salesFunnelStages.filter((row: any) => row.code !== 'Lost'),
+    [salesFunnelStages]
+  );
+  const funnelMaxCount = useMemo(
+    () => Math.max(1, ...visibleFunnelStages.map((row: any) => row.count || 0)),
+    [visibleFunnelStages]
+  );
 
   const cards = useMemo(() => [
     {
@@ -216,10 +261,59 @@ function ReportsComponent() {
         return { title: 'คำขอที่เสร็จสิ้น', subtitle: `${slaCompletedRows.length} รายการ`, kind: 'sla' as const, rows: slaCompletedRows };
       case 'slaBreached':
         return { title: 'คำขอที่เกิน SLA', subtitle: `${slaBreachedRows.length} รายการ`, kind: 'sla' as const, rows: slaBreachedRows };
+      case 'funnelCall':
+      case 'funnelMeeting':
+      case 'funnelPresentation':
+      case 'funnelDemoWorkshop':
+      case 'funnelQuotation':
+      case 'funnelWon':
+      case 'funnelLost': {
+        const code = detailModal.replace('funnel', '');
+        const stage = funnelStageByCode.get(code);
+        const items = stage?.items || [];
+        return {
+          title: `Sales Funnel · ${stage?.labelTh || stage?.label || code}`,
+          subtitle: `${items.length} โรงเรียน · มูลค่ารวม ${Number(stage?.value || 0).toLocaleString('th-TH')} ฿`,
+          kind: 'funnelLead' as const,
+          rows: items,
+        };
+      }
+      case 'activityCall':
+      case 'activityMeeting':
+      case 'activityPresentation':
+      case 'activityDemoWorkshop': {
+        const code = detailModal.replace('activity', '');
+        const rows = activityBreakdown?.tasksByType?.[code] || [];
+        const label = code === 'Meeting' ? 'นัดหมาย' : code === 'DemoWorkshop' ? 'Demo/Workshop' : code;
+        return {
+          title: `กิจกรรม · ${label}`,
+          subtitle: `${rows.length} Task ในช่วงที่เลือก`,
+          kind: 'activityTask' as const,
+          rows,
+        };
+      }
+      case 'activityQuotation': {
+        const rows = activityBreakdown?.quotation?.items || [];
+        return {
+          title: 'Quotation ในช่วง',
+          subtitle: `${rows.length} ใบเสนอราคา · อนุมัติ ${Number(activityBreakdown?.quotation?.approvedValue || 0).toLocaleString('th-TH')} ฿`,
+          kind: 'quote' as const,
+          rows,
+        };
+      }
+      case 'activityWon': {
+        const rows = activityBreakdown?.won?.items || [];
+        return {
+          title: 'Won Deals ในช่วง',
+          subtitle: `${rows.length} ดีล · มูลค่ารวม ${Number(activityBreakdown?.won?.value || 0).toLocaleString('th-TH')} ฿`,
+          kind: 'wonOpp' as const,
+          rows,
+        };
+      }
       default:
         return null;
     }
-  }, [detailModal, reportSummary, overdueNowRows.length, overdueInRangeRows.length, slaCompletedRows.length, slaBreachedRows.length]);
+  }, [detailModal, reportSummary, overdueNowRows.length, overdueInRangeRows.length, slaCompletedRows.length, slaBreachedRows.length, funnelStageByCode, activityBreakdown]);
 
   const pagedModalRows = useMemo(() => {
     if (!modalConfig) return [];
@@ -288,38 +382,65 @@ function ReportsComponent() {
         })}
       </div>
 
-      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
+      <section className={`p-6 rounded-2xl glass-panel space-y-5 ${loading ? 'opacity-60' : ''}`}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุป Sales Funnel</h3>
-            <p className="text-[11px] text-slate-500 mt-1">จำนวน Lead และมูลค่าตามสถานะการขายปัจจุบัน</p>
+            <p className="text-[11px] text-slate-500 mt-1">จำนวน Lead และมูลค่าตามสถานะการขายปัจจุบัน · กดการ์ดเพื่อดูรายละเอียด</p>
           </div>
-          <div className="text-xs text-slate-400">
-            Pipeline {Number(reportSummary?.salesFunnel?.totals?.pipelineValue || 0).toLocaleString('th-TH')} ฿ · Won {Number(reportSummary?.salesFunnel?.totals?.wonValue || 0).toLocaleString('th-TH')} ฿
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-slate-300">
+              Pipeline <strong className="text-slate-100">{Number(reportSummary?.salesFunnel?.totals?.pipelineValue || 0).toLocaleString('th-TH')} ฿</strong>
+            </span>
+            <span className="px-3 py-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">
+              Won <strong>{Number(reportSummary?.salesFunnel?.totals?.wonValue || 0).toLocaleString('th-TH')} ฿</strong>
+            </span>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          {salesFunnelStages.filter((row: any) => row.code !== 'Lost').map((row: any) => (
-            <div key={row.code} className="p-4 rounded-xl border border-slate-800 bg-[#121826]/40">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{row.labelTh || row.label}</span>
-                <GitBranch size={15} className="text-indigo-400" />
-              </div>
-              <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : row.count || 0}</span>
-              <span className="block mt-1 text-xs text-slate-400">{Number(row.value || 0).toLocaleString('th-TH')} ฿</span>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2 pt-1">
-          {salesFunnelStages.slice(0, -2).map((row: any, index: number) => {
-            const next = salesFunnelStages[index + 1];
-            if (!next || next.code === 'Lost') return null;
-            return (
-              <span key={row.code} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-800 bg-[#090d16] text-[10px] text-slate-400">
-                {row.labelTh || row.label} → {next.labelTh || next.label}: <strong className="text-slate-200">{row.conversionToNextPercent ?? 0}%</strong>
-              </span>
-            );
-          })}
+
+        <div className="overflow-x-auto pb-1 -mx-1 px-1">
+          <div className="flex items-stretch min-w-max lg:min-w-0 lg:w-full gap-0">
+            {visibleFunnelStages.map((row: any, index: number) => {
+              const next = visibleFunnelStages[index + 1];
+              const barWidth = Math.max(8, Math.round((Number(row.count || 0) / funnelMaxCount) * 100));
+              const stageTone = getPipelineColumnStyle(row.code);
+              return (
+                <div key={row.code} className="flex items-stretch flex-1 min-w-[132px] lg:min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => openDetailModal(funnelModalKeyByCode[row.code])}
+                    className={`group flex-1 p-4 rounded-xl border text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-indigo-500/5 cursor-pointer ${stageTone}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{row.labelTh || row.label}</span>
+                      <GitBranch size={14} className="opacity-60 group-hover:opacity-100 shrink-0" />
+                    </div>
+                    <div className="mt-3 flex items-end justify-between gap-2">
+                      <span className="text-3xl font-black text-slate-100 tabular-nums leading-none">{loading ? '…' : row.count || 0}</span>
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wide">Leads</span>
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-200 tabular-nums">
+                      {Number(row.value || 0).toLocaleString('th-TH')} <span className="text-[10px] font-normal text-slate-500">฿</span>
+                    </div>
+                    <div className="mt-3 h-1.5 rounded-full bg-slate-900/60 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-current opacity-70 transition-all duration-500"
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                  </button>
+                  {next && (
+                    <div className="flex flex-col items-center justify-center px-1.5 sm:px-2 shrink-0 self-center py-2">
+                      <ChevronRight size={16} className="text-slate-600" />
+                      <span className="mt-0.5 text-[9px] font-bold text-slate-500 whitespace-nowrap tabular-nums">
+                        {row.conversionToNextPercent ?? 0}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -327,27 +448,43 @@ function ReportsComponent() {
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุปกิจกรรมตามประเภท</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           {[
-            ['Call', activityBreakdown?.tasks?.Call ?? 0],
-            ['นัดหมาย', activityBreakdown?.tasks?.Meeting ?? 0],
-            ['Presentation', activityBreakdown?.tasks?.Presentation ?? 0],
-            ['Demo/Workshop', activityBreakdown?.tasks?.DemoWorkshop ?? 0],
-          ].map(([label, value]) => (
-            <div key={label} className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+            ['Call', 'Call', activityBreakdown?.tasks?.Call ?? 0],
+            ['Meeting', 'นัดหมาย', activityBreakdown?.tasks?.Meeting ?? 0],
+            ['Presentation', 'Presentation', activityBreakdown?.tasks?.Presentation ?? 0],
+            ['DemoWorkshop', 'Demo/Workshop', activityBreakdown?.tasks?.DemoWorkshop ?? 0],
+          ].map(([code, label, value]) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => openDetailModal(activityTaskKeyByCode[code])}
+              className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer text-left transition-all hover:scale-[1.01]"
+            >
               <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">{label}</span>
               <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : value}</span>
               <span className="block mt-1 text-[10px] text-slate-500">Task ในช่วง</span>
-            </div>
+              <span className="block mt-2 text-[10px] text-indigo-300/80">กดเพื่อดูรายละเอียด</span>
+            </button>
           ))}
-          <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+          <button
+            type="button"
+            onClick={() => openDetailModal('activityQuotation')}
+            className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 cursor-pointer text-left transition-all hover:scale-[1.01]"
+          >
             <span className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Quotation</span>
             <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : activityBreakdown?.quotation?.count ?? 0}</span>
             <span className="block mt-1 text-[10px] text-slate-500">อนุมัติ {Number(activityBreakdown?.quotation?.approvedValue || 0).toLocaleString('th-TH')} ฿</span>
-          </div>
-          <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+            <span className="block mt-2 text-[10px] text-emerald-300/80">กดเพื่อดูรายละเอียด</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => openDetailModal('activityWon')}
+            className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 cursor-pointer text-left transition-all hover:scale-[1.01]"
+          >
             <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">Won</span>
             <span className="block mt-2 text-2xl font-black text-slate-100">{loading ? '...' : activityBreakdown?.won?.count ?? 0}</span>
             <span className="block mt-1 text-[10px] text-slate-500">{Number(activityBreakdown?.won?.value || 0).toLocaleString('th-TH')} ฿</span>
-          </div>
+            <span className="block mt-2 text-[10px] text-amber-300/80">กดเพื่อดูรายละเอียด</span>
+          </button>
         </div>
       </section>
 
@@ -447,6 +584,70 @@ function ReportsComponent() {
             <div className="flex-1 overflow-y-auto p-6 space-y-3">
               {pagedModalRows.length === 0 ? (
                 <div className="py-16 text-center text-slate-500 text-base">ไม่มีรายการ</div>
+              ) : modalConfig.kind === 'funnelLead' ? (
+                pagedModalRows.map((row: any) => (
+                  <a
+                    key={row.id}
+                    href={`/leads/${row.id}`}
+                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-100">{row.schoolName}</div>
+                        <div className="text-sm text-slate-400 mt-1">{row.zone || '-'} · {row.status || '-'}</div>
+                        {row.updatedAt && (
+                          <div className="text-xs text-slate-500 mt-1">
+                            อัปเดต {new Date(row.updatedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-lg font-black text-indigo-300 shrink-0">{Number(row.value || 0).toLocaleString('th-TH')} ฿</div>
+                    </div>
+                  </a>
+                ))
+              ) : modalConfig.kind === 'activityTask' ? (
+                pagedModalRows.map((row: any) => (
+                  <a
+                    key={row.id}
+                    href="/tasks"
+                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-100">{row.title}</div>
+                        <div className="text-sm text-slate-400 mt-1">
+                          {formatTaskType(row.type, row.typeLabel, taskTypes)}
+                          {leadById(row.leadId)?.schoolName ? ` · ${leadById(row.leadId)?.schoolName}` : ''}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">{row.status || 'Pending'}</div>
+                      </div>
+                      <div className="text-sm font-semibold text-indigo-300 shrink-0">
+                        {new Date(row.startAt || row.endAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </div>
+                    </div>
+                  </a>
+                ))
+              ) : modalConfig.kind === 'wonOpp' ? (
+                pagedModalRows.map((row: any) => (
+                  <a
+                    key={row.id}
+                    href="/pipeline"
+                    className="block p-4 rounded-xl border border-slate-800 bg-[#090d16]/50 hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-100">{row.title}</div>
+                        <div className="text-sm text-slate-400 mt-1">{leadById(row.leadId)?.schoolName || row.leadId || 'ไม่ระบุโรงเรียน'}</div>
+                        {row.closeDate && (
+                          <div className="text-xs text-slate-500 mt-1">
+                            ปิด {new Date(row.closeDate).toLocaleDateString('th-TH')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-lg font-black text-amber-300 shrink-0">{Number(row.value || 0).toLocaleString('th-TH')} ฿</div>
+                    </div>
+                  </a>
+                ))
               ) : modalConfig.kind === 'quote' ? (
                 pagedModalRows.map((row: any) => (
                   <a

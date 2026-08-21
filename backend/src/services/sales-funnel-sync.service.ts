@@ -160,6 +160,18 @@ export function buildSalesFunnelReport(
       count: stageLeads.length,
       value,
       conversionToNextPercent: 0,
+      items: stageLeads
+        .map(lead => ({
+          id: lead._id,
+          schoolName: lead.schoolName,
+          zone: lead.zone,
+          status: lead.status,
+          stage: normalizeLeadStage(lead.stage),
+          value: resolveStageValueSync(lead._id, code, opportunities, quotes),
+          assignedTo: lead.assignedTo,
+          updatedAt: lead.updatedAt,
+        }))
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     };
   });
 
@@ -206,9 +218,31 @@ export function buildActivityBreakdown(tasks: any[], quotes: any[], opportunitie
     DemoWorkshop: 0,
   };
 
+  const mapTaskRow = (task: any) => ({
+    id: task._id,
+    title: task.title,
+    type: task.type,
+    typeLabel: task.typeLabel,
+    leadId: task.leadId,
+    startAt: task.startAt,
+    endAt: task.endAt,
+    status: task.status,
+    creatorId: task.creatorId,
+  });
+
+  const tasksByType: Record<keyof typeof taskCounts, ReturnType<typeof mapTaskRow>[]> = {
+    Call: [],
+    Meeting: [],
+    Presentation: [],
+    DemoWorkshop: [],
+  };
+
   for (const task of tasks) {
     const bucket = taskTypeMap[task.type];
-    if (bucket) taskCounts[bucket] += 1;
+    if (bucket) {
+      taskCounts[bucket] += 1;
+      tasksByType[bucket].push(mapTaskRow(task));
+    }
   }
 
   const approvedQuotes = quotes.filter(quote => quote.status === 'Approved');
@@ -216,14 +250,36 @@ export function buildActivityBreakdown(tasks: any[], quotes: any[], opportunitie
 
   return {
     tasks: taskCounts,
+    tasksByType,
     quotation: {
       count: quotes.length,
       approvedCount: approvedQuotes.length,
       approvedValue: approvedQuotes.reduce((sum, quote) => sum + Number(quote.totalAmount || 0), 0),
+      items: quotes
+        .map(quote => ({
+          id: quote._id,
+          quoteNumber: quote.quoteNumber,
+          leadId: quote.leadId,
+          totalAmount: quote.totalAmount,
+          status: quote.status,
+          createdAt: quote.createdAt,
+        }))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     },
     won: {
       count: wonOpps.length,
       value: wonOpps.reduce((sum, opp) => sum + Number(opp.value || 0), 0),
+      items: wonOpps
+        .map(opp => ({
+          id: opp._id,
+          title: opp.title,
+          leadId: opp.leadId,
+          value: opp.value,
+          closeDate: opp.closeDate,
+          assignedTo: opp.assignedTo,
+          updatedAt: opp.updatedAt,
+        }))
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     },
   };
 }
