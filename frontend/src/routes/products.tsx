@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { Download, Edit2, Package, Plus, Search, Tags, Trash2, Upload, X } from 'lucide-react';
-import { PaginationControls } from '../components/ui';
+import { PaginationControls, ModalShell } from '../components/ui';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -33,6 +33,36 @@ function authHeaders() {
   };
 }
 
+function formatPriceInput(value: number) {
+  if (!value) return '';
+  return String(value);
+}
+
+function sanitizePriceInput(raw: string) {
+  const digits = raw.replace(/[^\d]/g, '');
+  if (!digits) return 0;
+  return Number(digits.replace(/^0+/, '') || 0);
+}
+
+function buildProductPayload(form: typeof emptyProduct) {
+  const payload: Record<string, unknown> = {
+    name: form.name.trim(),
+    category: form.category.trim() || 'General',
+    price: Number(form.price) || 0,
+    isActive: form.isActive,
+  };
+  if (form.description?.trim()) payload.description = form.description.trim();
+  if (form.specialOffers?.trim()) payload.specialOffers = form.specialOffers.trim();
+  if (form.productCategory) payload.productCategory = form.productCategory;
+  if (form.priceMode) payload.priceMode = form.priceMode;
+  if (form.packages?.length) payload.packages = form.packages;
+  if (form.priceTiers && (form.priceTiers.standard > 0 || form.priceTiers.promotion > 0)) {
+    payload.priceTiers = form.priceTiers;
+  }
+  if (form.hardwareOptions?.length) payload.hardwareOptions = form.hardwareOptions;
+  return payload;
+}
+
 function ProductsComponent() {
   const { user } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
@@ -48,6 +78,8 @@ function ProductsComponent() {
   const [categoryForm, setCategoryForm] = useState({ previousName: '', name: '' });
   const [importText, setImportText] = useState('');
   const [error, setError] = useState('');
+  const [modalError, setModalError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const canManage = (user?.rank || 0) >= 4;
 
@@ -154,6 +186,7 @@ function ProductsComponent() {
     setEditingProduct(null);
     setForm(emptyProduct);
     setError('');
+    setModalError('');
     setShowModal(true);
   };
 
@@ -161,6 +194,7 @@ function ProductsComponent() {
     setEditingProduct(product);
     setForm({ ...emptyProduct, ...product });
     setError('');
+    setModalError('');
     setShowModal(true);
   };
 
@@ -168,31 +202,49 @@ function ProductsComponent() {
     setEditingProduct(null);
     setForm(emptyProduct);
     setError('');
+    setModalError('');
+    setSaving(false);
     setShowModal(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManage) return;
+    if (!form.name.trim()) {
+      setModalError('กรุณาระบุชื่อสินค้า');
+      return;
+    }
+    if (!form.category.trim()) {
+      setModalError('กรุณาระบุหมวดหมู่');
+      return;
+    }
 
+    setModalError('');
+    setSaving(true);
     const isEditing = Boolean(editingProduct?._id);
+    const payload = buildProductPayload(form);
+
     fetch(isEditing ? `/api/products/${editingProduct._id}` : '/api/products', {
       method: isEditing ? 'PUT' : 'POST',
       headers: authHeaders(),
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     })
       .then(async res => {
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.message || 'บันทึกสินค้าไม่สำเร็จ');
+          const detail = Array.isArray(data.errors)
+            ? data.errors.map((item: any) => item.message).join(', ')
+            : '';
+          throw new Error(detail || data.message || 'บันทึกสินค้าไม่สำเร็จ');
         }
-        return res.json();
+        return data;
       })
       .then(() => {
         closeModal();
         fetchProducts();
       })
-      .catch(err => setError(err.message));
+      .catch(err => setModalError(err.message || 'บันทึกสินค้าไม่สำเร็จ'))
+      .finally(() => setSaving(false));
   };
 
   const handleDelete = (id: string) => {
@@ -322,14 +374,20 @@ function ProductsComponent() {
       <PaginationControls page={page} total={total} limit={25} onPageChange={setPage} />
 
       {showModal && canManage && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleSubmit} className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+        <ModalShell>
+          <form onSubmit={handleSubmit} className="w-full max-w-xl max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-slate-100">{editingProduct ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h3>
               <button type="button" onClick={closeModal} className="text-slate-500 hover:text-slate-200" title="ปิด">
                 <X size={18} />
               </button>
             </div>
+
+            {modalError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
+                {modalError}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
@@ -359,17 +417,38 @@ function ProductsComponent() {
               </div>
               <div>
                 <label className="block text-xs text-slate-400 font-semibold mb-1">ราคา (ฐาน/Default)</label>
-                <input type="number" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatPriceInput(form.price)}
+                  onChange={e => setForm({ ...form, price: sanitizePriceInput(e.target.value) })}
+                  placeholder="0"
+                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
               </div>
               {form.productCategory === 'vr_software' && (
                 <div className="md:col-span-2 grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-slate-400 font-semibold mb-1">Standard (บาท/คน/ปี)</label>
-                    <input type="number" min={0} value={form.priceTiers?.standard || 0} onChange={e => setForm({ ...form, priceTiers: { ...form.priceTiers, standard: Number(e.target.value) } })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatPriceInput(form.priceTiers?.standard || 0)}
+                      onChange={e => setForm({ ...form, priceTiers: { ...form.priceTiers, standard: sanitizePriceInput(e.target.value) } })}
+                      placeholder="0"
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs text-slate-400 font-semibold mb-1">Promotion (บาท/คน/ปี)</label>
-                    <input type="number" min={0} value={form.priceTiers?.promotion || 0} onChange={e => setForm({ ...form, priceTiers: { ...form.priceTiers, promotion: Number(e.target.value) } })} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatPriceInput(form.priceTiers?.promotion || 0)}
+                      onChange={e => setForm({ ...form, priceTiers: { ...form.priceTiers, promotion: sanitizePriceInput(e.target.value) } })}
+                      placeholder="0"
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+                    />
                   </div>
                 </div>
               )}
@@ -440,12 +519,14 @@ function ProductsComponent() {
               )}
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-slate-900">
               <button type="button" onClick={closeModal} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">ยกเลิก</button>
-              <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg">บันทึกสินค้า</button>
+              <button type="submit" disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 rounded-lg text-xs font-semibold text-white shadow-lg">
+                {saving ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
+              </button>
             </div>
           </form>
-        </div>
+        </ModalShell>
       )}
 
       {showImportModal && canManage && (

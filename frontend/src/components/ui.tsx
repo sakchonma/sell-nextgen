@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
@@ -20,11 +21,22 @@ export function StatusBadge({ children, tone = 'slate' }: { children: ReactNode;
   return <span className={`px-2 py-0.5 rounded text-[9px] border font-bold ${tones[tone]}`}>{children}</span>;
 }
 
-export function ModalShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+export function ModalShell({ children, className = 'bg-black/75 backdrop-blur-sm' }: { children: ReactNode; className?: string }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${className}`}>
       {children}
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -2,9 +2,10 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
-import { AlertTriangle, ArrowLeft, Calculator, CheckCircle2, FileText, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Calculator, CheckCircle2, FileText, Plus, Search, Trash2, X } from 'lucide-react';
 import { calculateQuoteTotals, formatMoney, getUserDiscountLimit } from '../lib/quoteMath';
 import { apiFetch, apiJson } from '../lib/api';
+import { filterLeadsBySearch } from '../lib/lead-search';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -69,10 +70,6 @@ function QuoteBuilderComponent() {
         setLeads(normalizedLeads);
         setProducts(normalizedProducts);
         setDiscountSettings(settingData);
-        if (!leadId && normalizedLeads[0]) {
-          setLeadId(normalizedLeads[0]._id);
-          setLeadSearch(normalizedLeads[0].schoolName);
-        }
       })
       .catch(err => {
         console.error('Failed to load quote builder data:', err);
@@ -84,8 +81,9 @@ function QuoteBuilderComponent() {
     fetchData();
   }, []);
 
-  const filteredLeads = leads.filter(lead =>
-    lead.schoolName.toLowerCase().includes(leadSearch.trim().toLowerCase())
+  const filteredLeads = useMemo(
+    () => filterLeadsBySearch(leads, leadSearch),
+    [leads, leadSearch]
   );
 
   const selectLead = (lead: { _id: string; schoolName: string } | null) => {
@@ -224,7 +222,11 @@ function QuoteBuilderComponent() {
     setError('');
     setMessage('');
     if (!leadId || items.length === 0) {
-      setError('กรุณาเลือกโรงเรียนและเพิ่มสินค้าอย่างน้อย 1 รายการ');
+      if (!leadId) {
+        setError(leadSearch.trim() ? 'กรุณาเลือกโรงเรียนจากรายการที่ค้นหา' : 'กรุณาเลือกโรงเรียน');
+      } else {
+        setError('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
+      }
       return;
     }
 
@@ -271,36 +273,50 @@ function QuoteBuilderComponent() {
           <div className="rounded-xl border border-slate-800 bg-[#121826]/40 p-4 space-y-4">
             <div className="relative">
               <label className="block text-xs text-slate-400 font-semibold mb-1">โรงเรียนลูกค้า</label>
-              <input
-                type="text"
-                value={leadSearch}
-                onChange={e => {
-                  setLeadSearch(e.target.value);
-                  setLeadId('');
-                  setShowLeadDropdown(true);
-                }}
-                onFocus={() => setShowLeadDropdown(true)}
-                onBlur={() => setTimeout(() => setShowLeadDropdown(false), 150)}
-                placeholder="ค้นหาชื่อโรงเรียน..."
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                required
-              />
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <input
+                  type="text"
+                  value={leadSearch}
+                  onChange={e => {
+                    setLeadSearch(e.target.value);
+                    setLeadId('');
+                    setShowLeadDropdown(true);
+                  }}
+                  onFocus={() => setShowLeadDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowLeadDropdown(false), 150)}
+                  placeholder="พิมพ์ชื่อโรงเรียนเพื่อค้นหา..."
+                  className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  autoComplete="off"
+                />
+              </div>
+              {leadId && (
+                <p className="mt-1 text-[10px] text-emerald-400">เลือกแล้ว — กดในช่องเพื่อเปลี่ยนโรงเรียน</p>
+              )}
               {showLeadDropdown && (
-                <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-800 bg-[#090d16] shadow-xl">
+                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-slate-800 bg-[#090d16] shadow-xl">
                   {filteredLeads.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-slate-500">ไม่พบโรงเรียน</div>
+                    <div className="px-3 py-2 text-xs text-slate-500">ไม่พบโรงเรียนที่ตรงกับ &quot;{leadSearch.trim()}&quot;</div>
                   ) : (
-                    filteredLeads.map(lead => (
-                      <button
-                        key={lead._id}
-                        type="button"
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => selectLead(lead)}
-                        className="w-full px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"
-                      >
-                        {lead.schoolName} · {lead.zone}
-                      </button>
-                    ))
+                    <>
+                      {leadSearch.trim() && (
+                        <div className="px-3 py-1.5 text-[10px] text-slate-500 border-b border-slate-800/80">
+                          แสดง {filteredLeads.length} รายการที่ใกล้เคียงที่สุด
+                        </div>
+                      )}
+                      {filteredLeads.map(lead => (
+                        <button
+                          key={lead._id}
+                          type="button"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => selectLead(lead)}
+                          className={`w-full px-3 py-2 text-left text-xs hover:bg-slate-800 ${leadId === lead._id ? 'bg-indigo-500/10 text-indigo-200' : 'text-slate-200'}`}
+                        >
+                          <span className="font-medium">{lead.schoolName}</span>
+                          {lead.zone && <span className="text-slate-500"> · {lead.zone}</span>}
+                        </button>
+                      ))}
+                    </>
                   )}
                 </div>
               )}

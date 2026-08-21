@@ -21,8 +21,9 @@ import {
   Link as LinkIcon,
   Search
 } from 'lucide-react';
+import { EventDateTimeFields } from '../components/event-datetime';
 import { apiFetch, apiJson } from '../lib/api';
-import { isSameLocalDay } from '../lib/datetime';
+import { defaultEventSchedule, eventScheduleFromRange, isSameLocalDay, resolveEventRange } from '../lib/datetime';
 import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
 import { TASK_TYPES, formatTaskType } from '../lib/task-types';
 
@@ -53,8 +54,7 @@ function TasksComponent() {
   const [description, setDescription] = useState('');
   const [type, setType] = useState('Meeting');
   const [typeLabel, setTypeLabel] = useState('');
-  const [startAt, setStartAt] = useState('');
-  const [endAt, setEndAt] = useState('');
+  const [schedule, setSchedule] = useState(defaultEventSchedule);
   const [leadId, setLeadId] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
@@ -92,8 +92,7 @@ function TasksComponent() {
     setDescription('');
     setType('Meeting');
     setTypeLabel('');
-    setStartAt('');
-    setEndAt('');
+    setSchedule(defaultEventSchedule());
     setLeadId('');
     setLeadSearch('');
     setShowLeadDropdown(false);
@@ -110,8 +109,7 @@ function TasksComponent() {
     setDescription(task.description || '');
     setType(task.type || 'Meeting');
     setTypeLabel(task.typeLabel || '');
-    setStartAt(new Date(task.startAt).toISOString().slice(0, 16));
-    setEndAt(new Date(task.endAt).toISOString().slice(0, 16));
+    setSchedule(eventScheduleFromRange(task.startAt, task.endAt));
     setLeadId(task.leadId || '');
     setLeadSearch(leads.find(lead => lead._id === task.leadId)?.schoolName || '');
     setShowLeadDropdown(false);
@@ -136,11 +134,15 @@ function TasksComponent() {
     setShowLeadDropdown(false);
   };
 
-  const checkConflicts = () => {
-    if (!startAt || !endAt) return;
+  const checkConflicts = (nextSchedule = schedule) => {
+    const range = resolveEventRange(nextSchedule);
+    if (!range || range.endAt.getTime() <= range.startAt.getTime()) {
+      setConflicts([]);
+      return;
+    }
     apiJson('/api/tasks/conflicts', {
-      startAt,
-      endAt,
+      startAt: range.startAt.toISOString(),
+      endAt: range.endAt.toISOString(),
       participantIds: [...invitedIds, user?._id].filter(Boolean)
     })
       .then(data => setConflicts(data.conflicts || []))
@@ -150,7 +152,12 @@ function TasksComponent() {
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (new Date(endAt) <= new Date(startAt)) {
+    const range = resolveEventRange(schedule);
+    if (!range) {
+      setFormError('กรุณาเลือกวันเริ่มต้น');
+      return;
+    }
+    if (range.endAt.getTime() <= range.startAt.getTime()) {
       setFormError('วันและเวลาสิ้นสุดต้องมากกว่าวันและเวลาเริ่มต้น');
       return;
     }
@@ -159,8 +166,8 @@ function TasksComponent() {
       description,
       type,
       typeLabel: type === 'Other' ? typeLabel.trim() || undefined : undefined,
-      startAt,
-      endAt,
+      startAt: range.startAt.toISOString(),
+      endAt: range.endAt.toISOString(),
       leadId: leadId || undefined,
       opportunityId: opportunityId || undefined,
       reminderMinutesBefore: Number(reminderMinutesBefore) || 0,
@@ -552,29 +559,13 @@ function TasksComponent() {
                 </div>
               )}
 
-              <div className={type === 'Other' ? '' : 'hidden md:block'}></div>
-
-              <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-1">วันและเวลาเริ่มต้น</label>
-                <input 
-                  type="datetime-local"
-                  value={startAt}
-                  onChange={(e) => { setStartAt(e.target.value); setTimeout(checkConflicts, 0); }}
-                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-400 font-semibold mb-1">วันและเวลาสิ้นสุด</label>
-                <input 
-                  type="datetime-local"
-                  value={endAt}
-                  onChange={(e) => { setEndAt(e.target.value); setTimeout(checkConflicts, 0); }}
-                  className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
+              <EventDateTimeFields
+                value={schedule}
+                onChange={next => {
+                  setSchedule(next);
+                  checkConflicts(next);
+                }}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -654,7 +645,7 @@ function TasksComponent() {
                       type="checkbox"
                       checked={invitedIds.includes(cw._id)}
                   onChange={() => toggleInvite(cw._id)}
-                      onBlur={checkConflicts}
+                      onBlur={() => checkConflicts()}
                       className="rounded text-indigo-500 border-slate-800 focus:ring-indigo-500"
                     />
                     <span>{cw.name}</span>

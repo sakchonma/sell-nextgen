@@ -4,6 +4,7 @@ import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { dateKey } from '../lib/datetime';
 import { getUserColor } from '../lib/user-colors';
+import { ModalShell } from '../components/ui';
 import {
   CalendarDays,
   CheckCircle2,
@@ -535,8 +536,8 @@ function AdminCalendarComponent() {
       </div>
 
       {selectedEvent && (
-        <div className="admin-calendar-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <form onSubmit={saveEvent} className="w-full max-w-lg rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
+        <ModalShell className="bg-black/70">
+          <form onSubmit={saveEvent} className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className={`inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase ${sourceStyle(selectedEvent.source)}`}>
@@ -607,12 +608,12 @@ function AdminCalendarComponent() {
               </button>}
             </div>
           </form>
-        </div>
+        </ModalShell>
       )}
 
       {showCreate && (
-        <div className="admin-calendar-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-amber-950/25 backdrop-blur-sm p-4">
-          <form onSubmit={createEvent} className="w-full max-w-lg rounded-xl border border-amber-200 bg-[#fffaf0] p-5 shadow-xl shadow-amber-950/10 space-y-4">
+        <ModalShell className="bg-amber-950/25 backdrop-blur-sm">
+          <form onSubmit={createEvent} className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-amber-200 bg-[#fffaf0] p-5 shadow-xl shadow-amber-950/10 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className="inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase border-emerald-500/20 bg-emerald-500/10 text-emerald-300">Admin</span>
@@ -645,7 +646,7 @@ function AdminCalendarComponent() {
               </button>
             </div>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

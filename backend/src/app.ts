@@ -1634,12 +1634,18 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
 
   const dateFrom = typeof req.query.dateFrom === 'string' ? new Date(`${req.query.dateFrom}T00:00:00`) : null;
   const dateTo = typeof req.query.dateTo === 'string' ? new Date(`${req.query.dateTo}T23:59:59`) : null;
-  const inRange = (value: any) => {
-    const time = asDate(value || new Date()).getTime();
+  const hasDateFilter = Boolean(dateFrom || dateTo);
+  const inRangeByDate = (value: any) => {
+    if (!hasDateFilter) return true;
+    if (!value) return false;
+    const time = asDate(value).getTime();
     if (dateFrom && time < dateFrom.getTime()) return false;
     if (dateTo && time > dateTo.getTime()) return false;
     return true;
   };
+
+  const activityTypeRaw = typeof req.query.activityType === 'string' ? req.query.activityType : 'all';
+  const activityType = activityTypeRaw !== 'all' ? activityTypeRaw : null;
 
   const [leadsRaw, oppsRaw, quotesRaw, requestsRaw, tasksRaw, users] = await Promise.all([
     findAll<any>(Leads()),
@@ -1650,19 +1656,70 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     findAll<any>(Users())
   ]);
   const userMap = new Map(users.map((user: any) => [user._id, user]));
-  const leads = leadsRaw.filter((lead: any) => userCanSeeLead(currentUser, lead)).filter((lead: any) => inRange(lead.createdAt || lead.updatedAt));
+  const leads = leadsRaw
+    .filter((lead: any) => userCanSeeLead(currentUser, lead))
+    .filter((lead: any) => inRangeByDate(lead.createdAt));
   const visibleLeadIds = new Set(leads.map((lead: any) => lead._id));
-  const opportunities = oppsRaw.filter((opp: any) => currentUser.rank >= 4 || opp.assignedTo === currentUser._id || visibleLeadIds.has(opp.leadId)).filter((opp: any) => inRange(opp.createdAt || opp.updatedAt || opp.closeDate));
-  const quotes = quotesRaw.filter((quote: any) => currentUser.rank >= 4 || quote.creatorId === currentUser._id || getSupportDepartment(currentUser) === 'Finance').filter((quote: any) => inRange(quote.createdAt || quote.updatedAt));
-  const requests = requestsRaw.filter((request: any) => currentUser.rank >= 4 || request.creatorId === currentUser._id || request.assignment?.assignedToId === currentUser._id || (currentUser.rank === 2 && request.targetDepartment === getSupportDepartment(currentUser))).filter((request: any) => inRange(request.createdAt || request.updatedAt || request.startAt));
-  const tasks = tasksRaw.filter((task: any) => currentUser.rank >= 4 || task.creatorId === currentUser._id || (task.participants || []).some((participant: any) => participant.userId === currentUser._id)).filter((task: any) => inRange(task.createdAt || task.updatedAt || task.startAt));
+  const opportunities = oppsRaw
+    .filter((opp: any) => currentUser.rank >= 4 || opp.assignedTo === currentUser._id || visibleLeadIds.has(opp.leadId))
+    .filter((opp: any) => inRangeByDate(opp.createdAt));
+  const quotes = quotesRaw
+    .filter((quote: any) => currentUser.rank >= 4 || quote.creatorId === currentUser._id || getSupportDepartment(currentUser) === 'Finance')
+    .filter((quote: any) => inRangeByDate(quote.createdAt));
+  const requests = requestsRaw
+    .filter((request: any) => currentUser.rank >= 4 || request.creatorId === currentUser._id || request.assignment?.assignedToId === currentUser._id || (currentUser.rank === 2 && request.targetDepartment === getSupportDepartment(currentUser)))
+    .filter((request: any) => inRangeByDate(request.createdAt));
+
+  const tasksVisible = tasksRaw.filter((task: any) =>
+    currentUser.rank >= 4 ||
+    task.creatorId === currentUser._id ||
+    (task.participants || []).some((participant: any) => participant.userId === currentUser._id)
+  );
+  const tasksByDate = tasksVisible.filter((task: any) => inRangeByDate(task.startAt || task.createdAt));
+  const tasks = activityType
+    ? tasksByDate.filter((task: any) => task.type === activityType)
+    : tasksByDate;
+
+  const mapOverdueTask = (task: any) => ({
+    id: task._id,
+    title: task.title,
+    type: task.type,
+    typeLabel: task.typeLabel,
+    leadId: task.leadId,
+    endAt: task.endAt,
+    creatorId: task.creatorId,
+    status: task.status
+  });
+
+  const overdueNowTasks = tasksVisible.filter((task: any) =>
+    task.status !== 'Completed' && asDate(task.endAt).getTime() < Date.now()
+  );
+  const overdueInRangeTasks = hasDateFilter
+    ? tasksVisible.filter((task: any) =>
+        task.status !== 'Completed' && inRangeByDate(task.endAt)
+      )
+    : [];
 
   const wonOpps = opportunities.filter((opp: any) => opp.stage === 'Won');
   const approvedQuotes = quotes.filter((quote: any) => quote.status === 'Approved');
   const pendingQuotes = quotes.filter((quote: any) => quote.status === 'PendingApproval');
   const rejectedQuotes = quotes.filter((quote: any) => quote.status === 'Rejected');
   const completedRequests = requests.filter((request: any) => request.status === 'Completed');
-  const overdueTasks = tasks.filter((task: any) => task.status !== 'Completed' && asDate(task.endAt).getTime() < Date.now());
+  const hotLeadsInRange = leads.filter((lead: any) => lead.status === 'Hot');
+  const approvedValueInRange = approvedQuotes.reduce((sum: number, quote: any) => sum + Number(quote.totalAmount || 0), 0);
+
+  const activities = [...tasks]
+    .sort((a, b) => asDate(b.startAt || b.createdAt).getTime() - asDate(a.startAt || a.createdAt).getTime())
+    .map((task: any) => ({
+      _id: task._id,
+      title: task.title,
+      type: task.type,
+      typeLabel: task.typeLabel,
+      description: task.description,
+      leadId: task.leadId,
+      startAt: task.startAt,
+      createdAt: task.createdAt
+    }));
 
   const salesPerformance = users
     .filter((user: any) => user.rank === 3 || user.rank >= 4)
@@ -1721,6 +1778,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     scope: currentUser.rank >= 4 ? 'team' : 'personal',
     dateFrom: req.query.dateFrom || null,
     dateTo: req.query.dateTo || null,
+    activityType: activityTypeRaw,
     metrics: {
       leads: leads.length,
       opportunities: opportunities.length,
@@ -1728,7 +1786,12 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       wonDeals: wonOpps.length,
       wonValue: wonOpps.reduce((sum: number, opp: any) => sum + Number(opp.value || 0), 0),
       requestSlaBreached: requestSlaRows.filter((row: any) => row.breached).length,
-      overdueTasks: overdueTasks.length
+      activitiesInRange: tasks.length,
+      hotLeadsInRange: hotLeadsInRange.length,
+      approvedQuotesInRange: approvedQuotes.length,
+      approvedValueInRange,
+      overdueNow: overdueNowTasks.length,
+      overdueInRange: overdueInRangeTasks.length
     },
     funnel: {
       leads: leads.length,
@@ -1740,7 +1803,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       approved: approvedQuotes.length,
       pending: pendingQuotes.length,
       rejected: rejectedQuotes.length,
-      approvedValue: approvedQuotes.reduce((sum: number, quote: any) => sum + Number(quote.totalAmount || 0), 0),
+      approvedValue: approvedValueInRange,
       averageApprovalHours: approvedQuotes.length
         ? approvedQuotes.reduce((sum: number, quote: any) => sum + Math.max(0, asDate(quote.updatedAt).getTime() - asDate(quote.createdAt).getTime()) / 3600000, 0) / approvedQuotes.length
         : 0,
@@ -1778,19 +1841,15 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     },
     taskReport: {
       completed: tasks.filter((task: any) => task.status === 'Completed').length,
-      overdue: overdueTasks.length,
+      overdue: overdueNowTasks.length,
+      overdueNow: overdueNowTasks.length,
+      overdueInRange: overdueInRangeTasks.length,
       total: tasks.length,
-      overdueTasks: overdueTasks.map((task: any) => ({
-        id: task._id,
-        title: task.title,
-        type: task.type,
-        typeLabel: task.typeLabel,
-        leadId: task.leadId,
-        endAt: task.endAt,
-        creatorId: task.creatorId,
-        status: task.status
-      }))
+      overdueTasks: overdueNowTasks.map(mapOverdueTask),
+      overdueNowTasks: overdueNowTasks.map(mapOverdueTask),
+      overdueInRangeTasks: overdueInRangeTasks.map(mapOverdueTask)
     },
+    activities,
     salesForecast,
     salesPerformance
   });

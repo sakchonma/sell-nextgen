@@ -413,7 +413,6 @@ function RootComponent() {
               >
                 {isDesktopSidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
               </button>
-              <span className="inline-flex px-2 py-0.5 rounded text-[9px] font-medium bg-slate-800 border border-slate-700 text-slate-400">v2.0</span>
             </div>
           </div>
           {renderSidebarNav(isDesktopSidebarCollapsed, () => undefined)}

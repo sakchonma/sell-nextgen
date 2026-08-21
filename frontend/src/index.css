@@ -20,8 +20,8 @@
 }
 
 :root {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-display: 'Outfit', system-ui, sans-serif;
+  --font-sans: 'Sarabun', 'Noto Sans Thai', 'Inter', system-ui, sans-serif;
+  --font-display: 'Sarabun', 'Noto Sans Thai', 'Outfit', system-ui, sans-serif;
   --surface-page: #f1eadb;
   --surface-panel: rgba(255, 249, 237, 0.96);
   --surface-card: #fffdf8;
@@ -45,6 +45,19 @@ body {
   background-color: var(--surface-page);
   color: var(--text-body);
   min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Small labels: keep Thai readable (avoid overly wide letter-spacing). */
+[class*="text-[8px]"],
+[class*="text-[9px]"],
+[class*="text-[9.5px]"],
+[class*="text-[10px]"],
+[class*="text-[11px]"],
+.text-xs {
+  letter-spacing: 0.01em;
 }
 
 /* Glassmorphism card utilities */
@@ -173,25 +186,25 @@ tr {
 }
 
 [class*="text-[8px]"] {
-  font-size: 0.62rem !important;
+  font-size: 0.68rem !important;
 }
 
 [class*="text-[9px]"],
 [class*="text-[9.5px]"] {
-  font-size: 0.68rem !important;
-}
-
-[class*="text-[10px]"] {
   font-size: 0.74rem !important;
 }
 
-[class*="text-[11px]"] {
+[class*="text-[10px]"] {
   font-size: 0.8rem !important;
 }
 
+[class*="text-[11px]"] {
+  font-size: 0.86rem !important;
+}
+
 .text-xs {
-  font-size: 0.82rem !important;
-  line-height: 1.35rem !important;
+  font-size: 0.88rem !important;
+  line-height: 1.45rem !important;
 }
 
 .text-sm {

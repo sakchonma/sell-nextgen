@@ -12,66 +12,89 @@ export const Route = createRoute({
 });
 
 type ActivityTypeFilter = 'all' | 'Call' | 'Meeting' | 'Presentation' | 'Demo' | 'FollowUp' | 'Other';
+type ExpandedWidget = 'approved' | 'pending' | 'rejected' | 'overdueNow' | 'overdueInRange' | null;
+
+function formatFilterDate(value: string) {
+  if (!value) return '';
+  return new Date(`${value}T00:00:00`).toLocaleDateString('th-TH');
+}
 
 function ReportsComponent() {
-  const [tasks, setTasks] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
-  const [quotes, setQuotes] = useState<any[]>([]);
   const [reportSummary, setReportSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [activityType, setActivityType] = useState<ActivityTypeFilter>('all');
   const [activitySearch, setActivitySearch] = useState('');
-  const [expandedWidget, setExpandedWidget] = useState<'approved' | 'pending' | 'rejected' | 'overdue' | null>(null);
+  const [expandedWidget, setExpandedWidget] = useState<ExpandedWidget>(null);
 
   useEffect(() => {
+    setLoading(true);
     const params = new URLSearchParams();
     if (dateFrom) params.set('dateFrom', dateFrom);
     if (dateTo) params.set('dateTo', dateTo);
+    if (activityType !== 'all') params.set('activityType', activityType);
+
     Promise.all([
-      apiFetch('/api/tasks').catch(() => []),
-      apiFetch('/api/leads').catch(() => []),
-      apiFetch('/api/quotes').catch(() => []),
       apiFetch(`/api/reports/summary?${params.toString()}`).catch(() => null),
+      apiFetch('/api/leads').catch(() => []),
     ])
-      .then(([taskData, leadData, quoteData, summaryData]) => {
-        setTasks(Array.isArray(taskData) ? taskData : []);
-        setLeads(Array.isArray(leadData) ? leadData : []);
-        setQuotes(Array.isArray(quoteData) ? quoteData : []);
+      .then(([summaryData, leadData]) => {
         setReportSummary(summaryData);
+        setLeads(Array.isArray(leadData) ? leadData : []);
       })
       .finally(() => setLoading(false));
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, activityType]);
 
   const leadById = (id?: string) => leads.find(lead => lead._id === id);
+  const metrics = reportSummary?.metrics || {};
+  const hasDateFilter = Boolean(dateFrom || dateTo);
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    const monthKey = `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, '0')}`;
-    const tasksThisMonth = tasks.filter(task => String(task.startAt || '').startsWith(monthKey));
-    const hotLeads = leads.filter(lead => lead.status === 'Hot');
-    const approvedQuotes = quotes.filter(quote => quote.status === 'Approved');
-    const quoteValue = approvedQuotes.reduce((sum, quote) => sum + Number(quote.totalAmount || 0), 0);
+  const cards = useMemo(() => [
+    {
+      label: hasDateFilter ? 'กิจกรรมในช่วงที่เลือก' : 'กิจกรรมทั้งหมด',
+      value: metrics.activitiesInRange ?? 0,
+      icon: CalendarClock,
+      tone: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20',
+    },
+    {
+      label: hasDateFilter ? 'Hot Leads (ในช่วง)' : 'Hot Leads',
+      value: metrics.hotLeadsInRange ?? 0,
+      icon: School,
+      tone: 'text-rose-300 bg-rose-500/10 border-rose-500/20',
+    },
+    {
+      label: 'ใบเสนอราคาอนุมัติ',
+      value: metrics.approvedQuotesInRange ?? 0,
+      icon: FileText,
+      tone: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
+    },
+    {
+      label: 'มูลค่าอนุมัติ',
+      value: `${Number(metrics.approvedValueInRange || 0).toLocaleString('th-TH')} ฿`,
+      icon: TrendingUp,
+      tone: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
+    },
+  ], [hasDateFilter, metrics]);
 
-    return {
-      tasksThisMonth: tasksThisMonth.length,
-      hotLeads: hotLeads.length,
-      approvedQuotes: approvedQuotes.length,
-      quoteValue
-    };
-  }, [tasks, leads, quotes]);
+  const filterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (dateFrom || dateTo) {
+      parts.push(`${formatFilterDate(dateFrom) || 'เริ่มต้น'} – ${formatFilterDate(dateTo) || 'ปัจจุบัน'}`);
+    } else {
+      parts.push('แสดงทั้งหมด');
+    }
+    if (activityType !== 'all') {
+      parts.push(`ประเภท: ${formatTaskType(activityType)}`);
+    }
+    return parts.join(' · ');
+  }, [dateFrom, dateTo, activityType]);
 
-  const filteredActivities = [...tasks]
-    .filter(activity => activityType === 'all' || activity.type === activityType)
-    .filter(activity => {
-      const ts = new Date(activity.startAt || activity.createdAt).getTime();
-      if (dateFrom && ts < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
-      if (dateTo && ts > new Date(`${dateTo}T23:59:59`).getTime()) return false;
-      return true;
-    })
-    .filter(activity => {
-      const q = activitySearch.trim().toLowerCase();
+  const sortedActivities = useMemo(() => {
+    const activities = Array.isArray(reportSummary?.activities) ? reportSummary.activities : [];
+    const q = activitySearch.trim().toLowerCase();
+    return activities.filter((activity: any) => {
       if (!q) return true;
       const school = leadById(activity.leadId)?.schoolName || '';
       const typeText = formatTaskType(activity.type, activity.typeLabel);
@@ -81,31 +104,31 @@ function ReportsComponent() {
         typeText.toLowerCase().includes(q)
       );
     });
-
-  const sortedActivities = filteredActivities
-    .sort((a, b) => new Date(b.startAt || b.createdAt).getTime() - new Date(a.startAt || a.createdAt).getTime());
-
-  const cards = [
-    { label: 'กิจกรรมเดือนนี้', value: stats.tasksThisMonth, icon: CalendarClock, tone: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' },
-    { label: 'Hot Leads', value: stats.hotLeads, icon: School, tone: 'text-rose-300 bg-rose-500/10 border-rose-500/20' },
-    { label: 'ใบเสนอราคาอนุมัติ', value: stats.approvedQuotes, icon: FileText, tone: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' },
-    { label: 'มูลค่าอนุมัติ', value: `${stats.quoteValue.toLocaleString('th-TH')} ฿`, icon: TrendingUp, tone: 'text-amber-300 bg-amber-500/10 border-amber-500/20' },
-  ];
+  }, [reportSummary?.activities, activitySearch, leads]);
 
   const exportCsv = () => {
     const rows = [
       ['section', 'metric', 'value'],
-      ['metrics', 'leads', reportSummary?.metrics?.leads ?? stats.hotLeads],
-      ['metrics', 'opportunities', reportSummary?.metrics?.opportunities ?? 0],
-      ['metrics', 'quotes', reportSummary?.metrics?.quotes ?? quotes.length],
-      ['metrics', 'wonValue', reportSummary?.metrics?.wonValue ?? 0],
+      ['filter', 'dateFrom', dateFrom || 'all'],
+      ['filter', 'dateTo', dateTo || 'all'],
+      ['filter', 'activityType', activityType],
+      ['metrics', 'activitiesInRange', metrics.activitiesInRange ?? 0],
+      ['metrics', 'hotLeadsInRange', metrics.hotLeadsInRange ?? 0],
+      ['metrics', 'approvedQuotesInRange', metrics.approvedQuotesInRange ?? 0],
+      ['metrics', 'approvedValueInRange', metrics.approvedValueInRange ?? 0],
+      ['metrics', 'leads', metrics.leads ?? 0],
+      ['metrics', 'opportunities', metrics.opportunities ?? 0],
+      ['metrics', 'quotes', metrics.quotes ?? 0],
+      ['metrics', 'wonValue', metrics.wonValue ?? 0],
       ['quoteApproval', 'approved', reportSummary?.quoteApproval?.approved ?? 0],
       ['quoteApproval', 'pending', reportSummary?.quoteApproval?.pending ?? 0],
       ['quoteApproval', 'rejected', reportSummary?.quoteApproval?.rejected ?? 0],
+      ['quoteApproval', 'approvedValue', reportSummary?.quoteApproval?.approvedValue ?? 0],
       ['requestSla', 'breached', reportSummary?.requestSla?.breached ?? 0],
-      ['taskReport', 'overdue', reportSummary?.taskReport?.overdue ?? 0],
+      ['taskReport', 'overdueNow', reportSummary?.taskReport?.overdueNow ?? 0],
+      ['taskReport', 'overdueInRange', reportSummary?.taskReport?.overdueInRange ?? 0],
       ...((reportSummary?.salesForecast || []).map((row: any) => ['salesForecast', row.ownerName, row.weightedForecast])),
-      ...((reportSummary?.salesPerformance || []).map((row: any) => ['salesPerformance', row.name, row.wonValue]))
+      ...((reportSummary?.salesPerformance || []).map((row: any) => ['salesPerformance', row.name, row.wonValue])),
     ];
     const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -117,14 +140,15 @@ function ReportsComponent() {
     URL.revokeObjectURL(url);
   };
 
-  const toggleWidget = (key: 'approved' | 'pending' | 'rejected' | 'overdue') => {
+  const toggleWidget = (key: Exclude<ExpandedWidget, null>) => {
     setExpandedWidget(prev => prev === key ? null : key);
   };
 
   const quoteRows = (status: 'approved' | 'pending' | 'rejected') =>
     reportSummary?.quoteApproval?.quotesByStatus?.[status] || [];
 
-  const overdueRows = reportSummary?.taskReport?.overdueTasks || [];
+  const overdueNowRows = reportSummary?.taskReport?.overdueNowTasks || [];
+  const overdueInRangeRows = reportSummary?.taskReport?.overdueInRangeTasks || [];
 
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
@@ -133,6 +157,7 @@ function ReportsComponent() {
           <BarChart3 className="text-indigo-400" /> รายงานกิจกรรม
         </h2>
         <p className="text-xs text-slate-400 mt-1">ภาพรวมกิจกรรมขาย Leads และใบเสนอราคาจากข้อมูลที่ระบบมีอยู่</p>
+        <p className="text-[10px] text-indigo-300 mt-1">{filterSummary}</p>
       </div>
 
       <section className="p-4 rounded-2xl glass-panel">
@@ -155,14 +180,14 @@ function ReportsComponent() {
             </select>
           </div>
           <div className="flex items-end">
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
+            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); setExpandedWidget(null); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
               ล้างตัวกรอง
             </button>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-[10px] text-slate-500">Report scope: {reportSummary?.scope === 'team' ? 'ทีม/องค์กรตามสิทธิ์' : 'ข้อมูลส่วนตัวตามสิทธิ์'}</span>
-          <button onClick={exportCsv} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500">
+          <button onClick={exportCsv} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
             <Download size={14} /> Export CSV
           </button>
           <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
@@ -171,7 +196,7 @@ function ReportsComponent() {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 ${loading ? 'opacity-60' : ''}`}>
         {cards.map(card => {
           const Icon = card.icon;
           return (
@@ -186,7 +211,7 @@ function ReportsComponent() {
         })}
       </div>
 
-      <section className="p-6 rounded-2xl glass-panel space-y-4">
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Conversion funnel</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {[
@@ -206,31 +231,36 @@ function ReportsComponent() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <section className={`grid grid-cols-1 xl:grid-cols-2 gap-4 ${loading ? 'opacity-60' : ''}`}>
         <div className="p-6 rounded-2xl glass-panel space-y-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Quote approval report</h3>
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <button type="button" onClick={() => toggleWidget('approved')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'approved' ? 'border-emerald-400/50 ring-1 ring-emerald-400/30' : 'border-emerald-500/20'} bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{reportSummary?.quoteApproval?.approved || 0}</span>
+              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.quoteApproval?.approved || 0}</span>
               Approved
             </button>
             <button type="button" onClick={() => toggleWidget('pending')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'pending' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{reportSummary?.quoteApproval?.pending || 0}</span>
+              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.quoteApproval?.pending || 0}</span>
               Pending
             </button>
             <button type="button" onClick={() => toggleWidget('rejected')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'rejected' ? 'border-rose-400/50 ring-1 ring-rose-400/30' : 'border-rose-500/20'} bg-rose-500/10 text-rose-300 hover:bg-rose-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{reportSummary?.quoteApproval?.rejected || 0}</span>
+              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.quoteApproval?.rejected || 0}</span>
               Rejected
             </button>
           </div>
-          <div className="text-xs text-slate-400">มูลค่าอนุมัติ: <span className="text-slate-100 font-semibold">{Number(reportSummary?.quoteApproval?.approvedValue || 0).toLocaleString('th-TH')} ฿</span></div>
+          <div className="text-xs text-slate-400">
+            มูลค่าอนุมัติ:{' '}
+            <span className="text-slate-100 font-semibold">
+              {loading ? '...' : Number(reportSummary?.quoteApproval?.approvedValue || 0).toLocaleString('th-TH')} ฿
+            </span>
+          </div>
           {expandedWidget && ['approved', 'pending', 'rejected'].includes(expandedWidget) && (
             <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
               {quoteRows(expandedWidget as 'approved' | 'pending' | 'rejected').length === 0 ? (
                 <div className="py-4 text-center text-slate-500">ไม่มีรายการ</div>
               ) : (
                 quoteRows(expandedWidget as 'approved' | 'pending' | 'rejected').map((row: any) => (
-                  <a key={row.id} href={`/quotes`} className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
+                  <a key={row.id} href="/quotes" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
                     <span className="truncate text-slate-300">{row.quoteNumber} · {leadById(row.leadId)?.schoolName || row.leadId}</span>
                     <span className="text-slate-100 font-semibold shrink-0">{Number(row.totalAmount || 0).toLocaleString('th-TH')} ฿</span>
                   </a>
@@ -242,29 +272,49 @@ function ReportsComponent() {
 
         <div className="p-6 rounded-2xl glass-panel space-y-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Request SLA / Task overdue</h3>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
             <div className="p-3 rounded-lg border border-slate-800 bg-[#121826]/40">
-              <span className="block text-lg font-black text-slate-100">{reportSummary?.requestSla?.completed || 0}</span>
+              <span className="block text-lg font-black text-slate-100">{loading ? '...' : reportSummary?.requestSla?.completed || 0}</span>
               Completed
             </div>
             <div className="p-3 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-300">
-              <span className="block text-lg font-black">{reportSummary?.requestSla?.breached || 0}</span>
+              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.requestSla?.breached || 0}</span>
               SLA Breach
             </div>
-            <button type="button" onClick={() => toggleWidget('overdue')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'overdue' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
-              <span className="block text-lg font-black">{reportSummary?.taskReport?.overdue || 0}</span>
-              Task Overdue
+            <button type="button" onClick={() => toggleWidget('overdueNow')} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'overdueNow' ? 'border-amber-400/50 ring-1 ring-amber-400/30' : 'border-amber-500/20'} bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer`}>
+              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.taskReport?.overdueNow || 0}</span>
+              Overdue วันนี้
+            </button>
+            <button type="button" onClick={() => toggleWidget('overdueInRange')} disabled={!hasDateFilter} className={`p-3 rounded-lg border text-left transition-all ${expandedWidget === 'overdueInRange' ? 'border-orange-400/50 ring-1 ring-orange-400/30' : 'border-orange-500/20'} bg-orange-500/10 text-orange-300 hover:bg-orange-500/15 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}>
+              <span className="block text-lg font-black">{loading ? '...' : reportSummary?.taskReport?.overdueInRange || 0}</span>
+              Overdue ในช่วง
             </button>
           </div>
-          {expandedWidget === 'overdue' && (
+          {expandedWidget === 'overdueNow' && (
             <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
-              {overdueRows.length === 0 ? (
-                <div className="py-4 text-center text-slate-500">ไม่มีงานเกินกำหนด</div>
+              {overdueNowRows.length === 0 ? (
+                <div className="py-4 text-center text-slate-500">ไม่มีงานเกินกำหนด ณ วันนี้</div>
               ) : (
-                overdueRows.map((row: any) => (
+                overdueNowRows.map((row: any) => (
                   <a key={row.id} href="/tasks" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
                     <span className="truncate text-slate-300">{row.title}</span>
                     <span className="text-amber-300 shrink-0">{new Date(row.endAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  </a>
+                ))
+              )}
+            </div>
+          )}
+          {expandedWidget === 'overdueInRange' && (
+            <div className="max-h-48 overflow-y-auto divide-y divide-slate-800 rounded-lg border border-slate-800 bg-[#090d16]/50 text-[10.5px]">
+              {!hasDateFilter ? (
+                <div className="py-4 text-center text-slate-500">เลือกช่วงวันที่เพื่อดูงานค้างในช่วง</div>
+              ) : overdueInRangeRows.length === 0 ? (
+                <div className="py-4 text-center text-slate-500">ไม่มีงานค้างในช่วงที่เลือก</div>
+              ) : (
+                overdueInRangeRows.map((row: any) => (
+                  <a key={row.id} href="/tasks" className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-slate-800/50">
+                    <span className="truncate text-slate-300">{row.title}</span>
+                    <span className="text-orange-300 shrink-0">{new Date(row.endAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
                   </a>
                 ))
               )}
@@ -281,7 +331,7 @@ function ReportsComponent() {
         </div>
       </section>
 
-      <section className="p-6 rounded-2xl glass-panel space-y-4">
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Sales forecast</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
@@ -304,7 +354,7 @@ function ReportsComponent() {
                   <td className="py-2 text-right text-slate-100 font-semibold">{Number(row.weightedForecast || 0).toLocaleString('th-TH')} ฿</td>
                 </tr>
               ))}
-              {(reportSummary?.salesForecast || []).length === 0 && (
+              {!loading && (reportSummary?.salesForecast || []).length === 0 && (
                 <tr><td colSpan={5} className="py-8 text-center text-slate-500">ยังไม่มี forecast ในช่วงนี้</td></tr>
               )}
             </tbody>
@@ -312,7 +362,7 @@ function ReportsComponent() {
         </div>
       </section>
 
-      <section className="p-6 rounded-2xl glass-panel space-y-4">
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Sales performance by user/zone</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
@@ -337,7 +387,7 @@ function ReportsComponent() {
                   <td className="py-2 text-right text-slate-100 font-semibold">{Number(row.wonValue || 0).toLocaleString('th-TH')} ฿</td>
                 </tr>
               ))}
-              {(reportSummary?.salesPerformance || []).length === 0 && (
+              {!loading && (reportSummary?.salesPerformance || []).length === 0 && (
                 <tr><td colSpan={6} className="py-8 text-center text-slate-500">ยังไม่มีข้อมูล performance ในช่วงนี้</td></tr>
               )}
             </tbody>
@@ -345,9 +395,9 @@ function ReportsComponent() {
         </div>
       </section>
 
-      <section className="p-6 rounded-2xl glass-panel space-y-4">
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">กิจกรรมล่าสุด ({sortedActivities.length})</h3>
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">กิจกรรมล่าสุด ({loading ? '...' : sortedActivities.length})</h3>
           <div className="relative max-w-xs w-full">
             <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
             <input
@@ -360,7 +410,7 @@ function ReportsComponent() {
           </div>
         </div>
         <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-800">
-          {sortedActivities.map(activity => (
+          {sortedActivities.map((activity: any) => (
             <div key={activity._id} className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel)}</span>

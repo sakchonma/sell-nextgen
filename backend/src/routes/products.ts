@@ -110,9 +110,9 @@ const productBodySchema = z.object({
     purchasePrice: z.coerce.number().min(0),
     rentalPricePerYear: z.coerce.number().min(0)
   })).optional()
-}).strict();
+});
 
-const productUpdateBodySchema = productBodySchema.partial().strict();
+const productUpdateBodySchema = productBodySchema.partial();
 
 const categoryBodySchema = z.object({
   name: z.string().trim().min(1, 'ต้องระบุชื่อหมวดหมู่'),

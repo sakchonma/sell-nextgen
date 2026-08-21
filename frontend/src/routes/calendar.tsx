@@ -18,6 +18,7 @@ import {
 import { apiFetch, apiJson } from '../lib/api';
 import { dateKey, isSameLocalDay, isTodayLocal } from '../lib/datetime';
 import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
+import { ModalShell } from '../components/ui';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -299,7 +300,7 @@ function CalendarComponent() {
       )}
 
       {selectedTask && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <ModalShell>
           <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5 max-h-[88vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
               <div>
@@ -333,7 +334,7 @@ function CalendarComponent() {
               </form>
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );
