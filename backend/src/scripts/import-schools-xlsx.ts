@@ -70,7 +70,7 @@ async function main() {
   const { db } = await import('../config/mongodb.js');
   if (!db) throw new Error('MongoDB connected แต่ไม่มี db handle');
 
-  const users = await db.collection('users').find({}).project({ _id: 1, name: 1, roleId: 1 }).toArray() as ImportUser[];
+  const users = await db.collection('users').find({}).project({ _id: 1, name: 1, roleId: 1, email: 1 }).toArray() as ImportUser[];
   const fallbackUser = users.find(user => user.roleId === 'r_exec')
     || users.find(user => user.roleId === 'r_manager')
     || users[0];
@@ -106,7 +106,7 @@ async function main() {
           createdAt: existing.createdAt || draft.createdAt,
           notes: existing.notes || draft.notes,
           assignmentHistory: existing.assignmentHistory || draft.assignmentHistory,
-          assignedTo: draft.assignedTo || existing.assignedTo,
+          assignedTo: draft.assignedTo,
           updatedAt: now,
         }
       : draft;
@@ -143,15 +143,20 @@ async function main() {
         createdAt: now,
         updatedAt: now,
       } as any);
-    } else if (existingOpp.stage !== stage) {
-      await oppsCol.updateOne({ _id: existingOpp._id } as any, {
+    } else {
+      const patch: Record<string, unknown> = {
         $set: {
-          stage,
           assignedTo: leadDoc.assignedTo || existingOpp.assignedTo,
-          probability: defaultProbabilityForStage(stage),
           updatedAt: now,
         },
-        $push: {
+      };
+      if (existingOpp.stage !== stage) {
+        patch.$set = {
+          ...(patch.$set as Record<string, unknown>),
+          stage,
+          probability: defaultProbabilityForStage(stage),
+        };
+        patch.$push = {
           stageHistory: {
             fromStage: existingOpp.stage,
             toStage: stage,
@@ -159,8 +164,9 @@ async function main() {
             reason: 'Excel import',
             changedAt: now,
           },
-        },
-      } as any);
+        };
+      }
+      await oppsCol.updateOne({ _id: existingOpp._id } as any, patch as any);
     }
   }
 

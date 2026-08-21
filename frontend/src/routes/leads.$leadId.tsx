@@ -14,7 +14,8 @@ import {
   Activity,
   Repeat2,
   Paperclip,
-  Save
+  Save,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useActivityTypes } from '../hooks/useActivityTypes';
@@ -61,6 +62,7 @@ function LeadDetailComponent() {
   const [editNoteContent, setEditNoteContent] = useState('');
   const [editNoteType, setEditNoteType] = useState('General');
   const [coachNote, setCoachNote] = useState('');
+  const [newRemarkContent, setNewRemarkContent] = useState('');
   const [editProfile, setEditProfile] = useState({
     schoolName: '',
     address: '',
@@ -74,6 +76,9 @@ function LeadDetailComponent() {
     lastContactedAt: '',
     nextCallAt: '',
     documentStatus: '',
+    statusOccurredAt: '',
+    schoolSize: '',
+    originalStep: '',
     remarks: '',
     legacySaleName: '',
     status: 'Cold',
@@ -102,6 +107,9 @@ function LeadDetailComponent() {
           lastContactedAt: data.lastContactedAt || '',
           nextCallAt: data.nextCallAt || '',
           documentStatus: data.documentStatus || '',
+          statusOccurredAt: data.statusOccurredAt || '',
+          schoolSize: data.schoolSize || '',
+          originalStep: data.originalStep || '',
           remarks: data.remarks || '',
           legacySaleName: data.legacySaleName || '',
           status: data.status || 'Cold',
@@ -184,6 +192,19 @@ function LeadDetailComponent() {
         fetchActivity();
       })
       .catch(err => console.error('Failed to save lead profile:', err));
+  };
+
+  const handleAddRemark = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRemarkContent.trim() || !lead) return;
+    apiJson(`/api/leads/${leadId}`, {
+      remarkLogs: [{ content: newRemarkContent.trim(), author: user?.name || 'ผู้ใช้งานระบบ', createdAt: new Date() }]
+    }, { method: 'PUT' })
+      .then(() => {
+        setNewRemarkContent('');
+        fetchLeadDetail();
+      })
+      .catch(err => console.error('Failed to add remark:', err));
   };
 
   const generateAICoach = () => {
@@ -389,14 +410,15 @@ function LeadDetailComponent() {
                 Source: {lead.source || '-'} {lead.campaign ? `· Campaign: ${lead.campaign}` : ''}
               </div>
             )}
-            {(lead.gradeLevels || lead.studentCount || lead.upperElementaryStudentCount || lead.lastContactedAt || lead.nextCallAt || lead.legacySaleName) && (
+            {(lead.gradeLevels || lead.studentCount || lead.upperElementaryStudentCount || lead.lastContactedAt || lead.nextCallAt || lead.statusOccurredAt || lead.schoolSize) && (
               <div className="mt-2 flex flex-wrap gap-1.5 text-[9.5px] text-slate-500">
                 {lead.gradeLevels && <span className="px-2 py-0.5 rounded border border-slate-800">ระดับชั้น: {lead.gradeLevels}</span>}
+                {lead.schoolSize && <span className="px-2 py-0.5 rounded border border-slate-800">{lead.schoolSize}</span>}
                 {lead.studentCount !== undefined && <span className="px-2 py-0.5 rounded border border-slate-800">นร.: {Number(lead.studentCount).toLocaleString('th-TH')}</span>}
                 {lead.upperElementaryStudentCount !== undefined && <span className="px-2 py-0.5 rounded border border-slate-800">ป.4-6: {Number(lead.upperElementaryStudentCount).toLocaleString('th-TH')}</span>}
                 {lead.lastContactedAt && <span className="px-2 py-0.5 rounded border border-slate-800">ล่าสุด: {lead.lastContactedAt}</span>}
                 {lead.nextCallAt && <span className="px-2 py-0.5 rounded border border-slate-800">นัดโทร: {lead.nextCallAt}</span>}
-                {lead.legacySaleName && <span className="px-2 py-0.5 rounded border border-slate-800">Sale เดิม: {lead.legacySaleName}</span>}
+                {lead.statusOccurredAt && <span className="px-2 py-0.5 rounded border border-slate-800">วันที่เกิดสถานะ: {lead.statusOccurredAt}</span>}
               </div>
             )}
           </div>
@@ -647,6 +669,10 @@ function LeadDetailComponent() {
                     <input value={editProfile.educationAuthority} onChange={e => handleEditProfileChange('educationAuthority', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    ขนาดโรงเรียน
+                    <input value={editProfile.schoolSize} onChange={e => handleEditProfileChange('schoolSize', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     ติดต่อลูกค้าล่าสุด
                     <input type="date" value={editProfile.lastContactedAt} onChange={e => handleEditProfileChange('lastContactedAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
@@ -658,16 +684,20 @@ function LeadDetailComponent() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Ps / ยื่นหนังสือ
+                    วันที่เกิดสถานะ (คอลัมน์ P)
+                    <input type="date" value={editProfile.statusOccurredAt} onChange={e => handleEditProfileChange('statusOccurredAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  </label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    รายละเอียดคอลัมน์ P
                     <input value={editProfile.documentStatus} onChange={e => handleEditProfileChange('documentStatus', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Sale เดิม
-                    <input value={editProfile.legacySaleName} onChange={e => handleEditProfileChange('legacySaleName', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    ขั้นตอนเดิม
+                    <input value={editProfile.originalStep} onChange={e => handleEditProfileChange('originalStep', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
-                  <label className="block md:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Remarks
-                    <textarea value={editProfile.remarks} onChange={e => handleEditProfileChange('remarks', e.target.value)} rows={3} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    ผู้ขายที่ผูกในระบบ
+                    <input value={editProfile.legacySaleName} onChange={e => handleEditProfileChange('legacySaleName', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
                 </div>
 
@@ -675,6 +705,39 @@ function LeadDetailComponent() {
                   <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer">
                     <Save size={14} /> บันทึกข้อมูลโรงเรียน
                   </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="p-6 rounded-2xl glass-panel space-y-4">
+              <div className="flex items-center gap-1.5">
+                <MessageSquare size={13} className="text-indigo-400" />
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Remarks</h3>
+              </div>
+              <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
+                {(lead.remarkLogs || []).length ? (lead.remarkLogs as any[]).map((item, idx) => (
+                  <div key={`${item.createdAt}-${idx}`} className="p-3 rounded-xl border border-slate-800 bg-[#090d16]/40">
+                    <div className="flex justify-between gap-2 text-[10px] text-slate-500">
+                      <span>{item.author || 'Excel Import'}</span>
+                      <span>{item.createdAt ? new Date(item.createdAt).toLocaleString('th-TH') : ''}</span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">{item.content}</p>
+                  </div>
+                )) : (
+                  <div className="text-[10.5px] text-slate-500">ยังไม่มี Remarks</div>
+                )}
+              </div>
+              <form onSubmit={handleAddRemark} className="space-y-2 pt-2 border-t border-slate-800">
+                <textarea
+                  value={newRemarkContent}
+                  onChange={e => setNewRemarkContent(e.target.value)}
+                  rows={3}
+                  placeholder="เพิ่ม Remarks ใหม่ของโรงเรียนนี้"
+                  className="w-full p-3 rounded-xl border border-slate-800 bg-[#090d16] text-xs text-slate-200"
+                  required
+                />
+                <div className="flex justify-end">
+                  <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">เพิ่ม Remarks</button>
                 </div>
               </form>
             </div>

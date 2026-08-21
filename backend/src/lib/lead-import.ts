@@ -13,7 +13,14 @@ export interface ImportUser {
   _id: string;
   name: string;
   roleId?: string;
+  email?: string;
 }
+
+export const SALE_NICKNAME_MAP: Record<string, string> = {
+  พิมพ์: 'พิมพ์สุดา พิทักษ์วงค์',
+  ยิ้ม: 'วีรินท์รดา พูนสวัสดิ์',
+  พี่เกรซ: 'root',
+};
 
 const LEAD_STATUSES = ['Cold', 'Warm', 'Hot', 'Customer'] as const;
 
@@ -32,7 +39,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   nextCallAt: ['nextCallAt', 'นัดโทรครั้งถัดไป', '__col_M'],
   phone: ['phone', 'contactPhone', 'เบอร์โทร', '__col_N'],
   email: ['email', 'contactEmail', 'อีเมล', '__col_O'],
-  contactName: ['contactName', 'ผู้ติดต่อ'],
+  contactName: ['contactName', 'ผู้ติดต่อ', '__col_R'],
   documentStatus: ['documentStatus', 'Ps / ยื่นหนังสือ /Trial', 'Ps / ยื่นหนังสือ', '__col_P'],
   remarks: ['remarks', 'Remarks', '__col_Q'],
   sale: ['legacySaleName', 'Sale', 'sale', '__col_S'],
@@ -187,6 +194,44 @@ export function emailFromCell(value?: string) {
   return String(value || '').replace(/^mailto:/i, '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
 }
 
+export function parseFlexibleThaiDate(token: string, fallbackYear = 2026): string | undefined {
+  const match = String(token).trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (!match) return undefined;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  let year = match[3] ? Number(match[3]) : fallbackYear;
+  if (year < 100) {
+    year = year >= 50 ? year + 2500 - 543 : year + 2000;
+  } else if (year >= 2400) {
+    year -= 543;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined;
+  return date.toISOString().slice(0, 10);
+}
+
+export function parseStatusOccurredAt(cell?: string): string | undefined {
+  if (!cell) return undefined;
+  const matches = String(cell).match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/g) || [];
+  for (const token of matches) {
+    const parsed = parseFlexibleThaiDate(token);
+    if (parsed) return parsed;
+  }
+  return undefined;
+}
+
+export function splitRemarkLogs(raw?: string, author?: string, createdAt?: Date) {
+  const text = String(raw || '').trim();
+  if (!text) return [] as Array<{ content: string; author?: string; createdAt: Date }>;
+  const stamp = createdAt || new Date();
+  return text.split(/\s*(?:->|→)\s*/).map(part => part.trim()).filter(Boolean).map(content => ({
+    content,
+    author: author || 'Excel Import',
+    createdAt: stamp,
+  }));
+}
+
 export function leadIdentityKey(lead: { schoolName?: string; district?: string; province?: string }) {
   return [compactKey(lead.schoolName), compactKey(lead.district), compactKey(lead.province)].join('|');
 }
@@ -195,14 +240,20 @@ export function resolveAssignedUserId(saleName: string | undefined, users: Impor
   const raw = String(saleName || '').trim();
   if (!raw) return { userId: fallbackId, legacySaleName: undefined as string | undefined };
 
-  const exact = users.find(user => user.name.trim() === raw);
-  if (exact) return { userId: exact._id, legacySaleName: raw };
+  const mapped = SALE_NICKNAME_MAP[raw] || raw;
+  const needle = compactKey(mapped);
+  const matched = users.find(user => {
+    if (mapped === 'root') {
+      return user._id === 'root' || compactKey(user.email).startsWith('root@') || compactKey(user.name).includes('root');
+    }
+    const nameKey = compactKey(user.name);
+    return nameKey === needle || nameKey.includes(needle) || needle.includes(nameKey);
+  }) || users.find(user => compactKey(user.name) === compactKey(raw));
 
-  const salesUsers = users.filter(user => user.roleId === 'r_sales');
-  const nick = salesUsers.find(user => user.name.includes(raw) || raw.includes(user.name));
-  if (nick) return { userId: nick._id, legacySaleName: raw };
-
-  return { userId: fallbackId, legacySaleName: raw };
+  if (matched) {
+    return { userId: matched._id, legacySaleName: matched.name };
+  }
+  return { userId: fallbackId, legacySaleName: mapped === 'root' ? 'root' : mapped };
 }
 
 export interface BuildLeadImportOptions {
@@ -230,18 +281,13 @@ export function buildLeadFromImportRow(row: Record<string, string>, options: Bui
   const documentStatus = pickLeadField(row, 'documentStatus');
   const remarks = pickLeadField(row, 'remarks');
   const assigned = resolveAssignedUserId(saleName, options.users || [], options.currentUserId);
+  const statusOccurredAt = parseStatusOccurredAt(documentStatus) || undefined;
+  const remarkLogs = splitRemarkLogs(remarks, assigned.legacySaleName || 'Excel Import', now);
   const noteParts = [
-    pickLeadField(row, 'gradeLevels') ? `ระดับชั้น: ${pickLeadField(row, 'gradeLevels')}` : '',
     schoolSize ? `ขนาดโรงเรียน: ${schoolSize}` : '',
-    pickLeadField(row, 'studentCount') ? `จำนวน นร.: ${pickLeadField(row, 'studentCount')}` : '',
-    pickLeadField(row, 'upperElementaryStudentCount') ? `จำนวน นร. ป.4-6: ${pickLeadField(row, 'upperElementaryStudentCount')}` : '',
     legacyStep ? `ขั้นตอนเดิม: ${legacyStep}` : '',
-    rawStatus && mapStatusLabelToStage(rawStatus) === 'Call' && compactKey(rawStatus) === 'pending' ? 'สถานะเดิม: Pending' : '',
-    pickLeadField(row, 'lastContactedAt') ? `ติดต่อล่าสุด: ${excelSerialToDateText(pickLeadField(row, 'lastContactedAt'))}` : '',
-    pickLeadField(row, 'nextCallAt') ? `นัดโทรครั้งถัดไป: ${excelSerialToDateText(pickLeadField(row, 'nextCallAt'))}` : '',
-    documentStatus ? `Ps/ยื่นหนังสือ: ${documentStatus}` : '',
-    remarks ? `Remarks: ${remarks}` : '',
-    saleName ? `Sale เดิม: ${saleName}` : '',
+    rawStatus && compactKey(rawStatus) === 'pending' ? 'สถานะเดิม: Pending' : '',
+    statusOccurredAt ? `วันที่เกิดสถานะ: ${statusOccurredAt}` : '',
     emailCell && !email ? `ข้อมูลช่องอีเมล: ${emailCell}` : '',
   ].filter(Boolean);
 
@@ -262,13 +308,17 @@ export function buildLeadFromImportRow(row: Record<string, string>, options: Bui
     lastContactedAt: excelSerialToDateText(pickLeadField(row, 'lastContactedAt')) || undefined,
     nextCallAt: excelSerialToDateText(pickLeadField(row, 'nextCallAt')) || undefined,
     documentStatus: documentStatus || undefined,
+    statusOccurredAt,
+    schoolSize: schoolSize || undefined,
+    originalStep: legacyStep || undefined,
     remarks: remarks || undefined,
+    remarkLogs,
     legacySaleName: assigned.legacySaleName,
     source: pickLeadField(row, 'source') || 'Excel Import',
     campaign: pickLeadField(row, 'campaign') || 'สรุปรายชื่อโรงเรียนกำลังดำเนินการ',
     archived: stage === 'Lost' && String(legacyStep || '').includes('ปิดกิจการ'),
     contacts: phone || email || contactName ? [{
-      name: contactName || saleName || 'ผู้ติดต่อจากไฟล์นำเข้า',
+      name: contactName || 'ผู้ติดต่อจากไฟล์นำเข้า',
       position: emailCell && !email ? emailCell : '',
       phone,
       email,
@@ -309,6 +359,10 @@ export function collapseImportDrafts(drafts: LeadImportDraft[]): LeadImportDraft
       _id: previous._id,
       createdAt: previous.createdAt,
       assignmentHistory: previous.assignmentHistory,
+      remarkLogs: [
+        ...(previous.remarkLogs || []),
+        ...((draft.remarkLogs || []).filter(item => !(previous.remarkLogs || []).some(existing => existing.content === item.content))),
+      ],
       notes: [
         ...(previous.notes || []),
         ...((draft.notes || []).filter(note => !(previous.notes || []).some(existing => existing.content === note.content))),

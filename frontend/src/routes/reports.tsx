@@ -1,11 +1,12 @@
 import { createRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
-import { BarChart3, CalendarClock, ChevronRight, Download, FileText, GitBranch, Printer, School, Search, TrendingUp, X } from 'lucide-react';
+import { BarChart3, ChevronRight, Download, GitBranch, Printer, Search, X } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
-import { getPipelineColumnStyle } from '../lib/sales-funnel-stages';
+import { dateKey } from '../lib/datetime';
+import { getPipelineColumnStyle, getSalesFunnelStageLabel } from '../lib/sales-funnel-stages';
 import { ModalShell, PaginationControls } from '../components/ui';
 
 export const Route = createRoute({
@@ -32,13 +33,57 @@ type DetailModalKey =
   | 'funnelLost'
   | null;
 
-const MODAL_PAGE_SIZE = 15;
+const PIPELINE_FUNNEL_STAGE_CODES = ['Call', 'Meeting', 'Presentation', 'DemoWorkshop', 'Quotation'] as const;
+
+function emptyFunnelStage(code: string) {
+  return {
+    code,
+    label: code,
+    labelTh: getSalesFunnelStageLabel(code),
+    count: 0,
+    value: 0,
+    conversionToNextPercent: 0,
+    items: [],
+  };
+}
+
+function getFunnelDisplayLabel(row: { code?: string; label?: string; labelTh?: string }) {
+  return row.labelTh || row.label || row.code || '-';
+}
 const ACTIVITY_PAGE_SIZE = 10;
 
 function formatFilterDate(value: string) {
   if (!value) return '';
   return new Date(`${value}T00:00:00`).toLocaleDateString('th-TH');
 }
+
+type DateRangePreset = 'today' | 'week' | 'month';
+
+function getDateRangePreset(preset: DateRangePreset) {
+  const now = new Date();
+  const to = dateKey(now);
+
+  if (preset === 'today') {
+    return { from: to, to };
+  }
+
+  if (preset === 'week') {
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const start = new Date(now);
+    start.setDate(now.getDate() + mondayOffset);
+    return { from: dateKey(start), to };
+  }
+
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from: dateKey(start), to };
+}
+
+const DATE_RANGE_PRESETS: Array<{ id: DateRangePreset; label: string }> = [
+  { id: 'today', label: 'วันปัจจุบัน' },
+  { id: 'week', label: 'สัปดาห์ปัจจุบัน' },
+  { id: 'month', label: 'เดือนปัจจุบัน' },
+];
 
 function ReportsComponent() {
   const { types: taskTypes, selectOptions: taskTypeOptions } = useActivityTypes('task');
@@ -98,18 +143,20 @@ function ReportsComponent() {
     Lost: 'funnelLost',
   };
 
-  const visibleFunnelStages = useMemo(
-    () => salesFunnelStages.filter((row: any) => row.code !== 'Lost'),
-    [salesFunnelStages]
+  const pipelineFunnelStages = useMemo(
+    () => PIPELINE_FUNNEL_STAGE_CODES.map(code => funnelStageByCode.get(code) || emptyFunnelStage(code)),
+    [funnelStageByCode]
+  );
+  const outcomeFunnelStages = useMemo(
+    () => [
+      funnelStageByCode.get('Won') || emptyFunnelStage('Won'),
+      funnelStageByCode.get('Lost') || emptyFunnelStage('Lost'),
+    ],
+    [funnelStageByCode]
   );
   const funnelMaxCount = useMemo(
-    () => Math.max(1, ...visibleFunnelStages.map((row: any) => row.count || 0)),
-    [visibleFunnelStages]
-  );
-
-  const funnelRows = useMemo(
-    () => [visibleFunnelStages.slice(0, 3), visibleFunnelStages.slice(3, 6)],
-    [visibleFunnelStages]
+    () => Math.max(1, ...[...pipelineFunnelStages, ...outcomeFunnelStages].map((row: any) => row.count || 0)),
+    [pipelineFunnelStages, outcomeFunnelStages]
   );
 
   const renderFunnelCard = (row: any, showArrow: boolean) => {
@@ -123,7 +170,7 @@ function ReportsComponent() {
           className={`group flex-1 p-4 rounded-xl border text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-indigo-500/5 cursor-pointer ${stageTone}`}
         >
           <div className="flex items-start justify-between gap-2">
-            <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{row.labelTh || row.label}</span>
+            <span className="text-[10px] font-black uppercase tracking-wider leading-tight">{getFunnelDisplayLabel(row)}</span>
             <GitBranch size={14} className="opacity-60 group-hover:opacity-100 shrink-0" />
           </div>
           <div className="mt-3 flex items-end justify-between gap-2">
@@ -151,33 +198,6 @@ function ReportsComponent() {
       </div>
     );
   };
-
-  const cards = useMemo(() => [
-    {
-      label: hasDateFilter ? 'กิจกรรมในช่วงที่เลือก' : 'กิจกรรมทั้งหมด',
-      value: metrics.activitiesInRange ?? 0,
-      icon: CalendarClock,
-      tone: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20',
-    },
-    {
-      label: hasDateFilter ? 'Hot Leads (ในช่วง)' : 'Hot Leads',
-      value: metrics.hotLeadsInRange ?? 0,
-      icon: School,
-      tone: 'text-rose-300 bg-rose-500/10 border-rose-500/20',
-    },
-    {
-      label: 'ใบเสนอราคาอนุมัติ',
-      value: metrics.approvedQuotesInRange ?? 0,
-      icon: FileText,
-      tone: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
-    },
-    {
-      label: 'มูลค่าอนุมัติ',
-      value: `${Number(metrics.approvedValueInRange || 0).toLocaleString('th-TH')} ฿`,
-      icon: TrendingUp,
-      tone: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
-    },
-  ], [hasDateFilter, metrics]);
 
   const filterSummary = useMemo(() => {
     const parts: string[] = [];
@@ -259,6 +279,23 @@ function ReportsComponent() {
     setModalPage(1);
   };
 
+  const applyDatePreset = (preset: DateRangePreset) => {
+    const range = getDateRangePreset(preset);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+    setActivityPage(1);
+    closeDetailModal();
+  };
+
+  const activeDatePreset = useMemo((): DateRangePreset | null => {
+    if (!dateFrom || !dateTo) return null;
+    for (const preset of DATE_RANGE_PRESETS) {
+      const range = getDateRangePreset(preset.id);
+      if (dateFrom === range.from && dateTo === range.to) return preset.id;
+    }
+    return null;
+  }, [dateFrom, dateTo]);
+
   const quoteRows = (status: 'approved' | 'pending' | 'rejected') =>
     reportSummary?.quoteApproval?.quotesByStatus?.[status] || [];
 
@@ -295,7 +332,7 @@ function ReportsComponent() {
         const stage = funnelStageByCode.get(code);
         const items = stage?.items || [];
         return {
-          title: `Sales Funnel · ${stage?.labelTh || stage?.label || code}`,
+          title: `Sales Funnel · ${getFunnelDisplayLabel(stage || { code })}`,
           subtitle: `${items.length} โรงเรียน · มูลค่ารวม ${Number(stage?.value || 0).toLocaleString('th-TH')} ฿`,
           kind: 'funnelLead' as const,
           rows: items,
@@ -347,37 +384,44 @@ function ReportsComponent() {
             </button>
           </div>
         </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {DATE_RANGE_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => applyDatePreset(preset.id)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                activeDatePreset === preset.id
+                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200'
+                  : 'border-slate-800 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-[10px] text-slate-500">Report scope: {reportSummary?.scope === 'team' ? 'ทีม/องค์กรตามสิทธิ์' : 'ข้อมูลส่วนตัวตามสิทธิ์'}</span>
-          <button onClick={exportCsv} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
-            <Download size={14} /> Export CSV
-          </button>
-          <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
-            <Printer size={14} /> Print / PDF
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={exportCsv} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+              <Download size={14} /> Export CSV
+            </button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+              <Printer size={14} /> Print / PDF
+            </button>
+          </div>
         </div>
       </section>
-
-      <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 ${loading ? 'opacity-60' : ''}`}>
-        {cards.map(card => {
-          const Icon = card.icon;
-          return (
-            <div key={card.label} className={`p-4 rounded-xl border ${card.tone}`}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">{card.label}</span>
-                <Icon size={18} />
-              </div>
-              <div className="mt-3 text-2xl font-black text-slate-100">{loading ? '...' : card.value}</div>
-            </div>
-          );
-        })}
-      </div>
 
       <section className={`p-6 rounded-2xl glass-panel space-y-5 ${loading ? 'opacity-60' : ''}`}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุป Sales Funnel</h3>
-            <p className="text-[11px] text-slate-500 mt-1">จำนวน Lead และมูลค่าตามสถานะการขายปัจจุบัน · กดการ์ดเพื่อดูรายละเอียด</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {hasDateFilter
+                ? 'Lead ที่มีกิจกรรม/อัปเดตในช่วงที่เลือก ตามสถานะปัจจุบัน · กดการ์ดเพื่อดูรายละเอียด'
+                : 'จำนวน Lead และมูลค่าตามสถานะการขายปัจจุบัน · กดการ์ดเพื่อดูรายละเอียด'}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-slate-300">
@@ -390,18 +434,29 @@ function ReportsComponent() {
         </div>
 
         <div className="space-y-3">
-          {funnelRows.map((rowStages, rowIndex) => (
-            <div key={rowIndex} className="flex items-stretch w-full gap-0">
-              {rowStages.map((row: any, index: number) =>
-                renderFunnelCard(row, index < rowStages.length - 1)
-              )}
+          <div className="flex items-stretch w-full gap-0">
+            {pipelineFunnelStages.slice(0, 3).map((row: any, index: number) =>
+              renderFunnelCard(row, index < 2)
+            )}
+          </div>
+          <div className="flex items-stretch w-full gap-0">
+            {renderFunnelCard(pipelineFunnelStages[3], true)}
+            {renderFunnelCard(pipelineFunnelStages[4], true)}
+            <div className="flex flex-1 min-w-0 gap-2">
+              {renderFunnelCard(outcomeFunnelStages[0], false)}
+              {renderFunnelCard(outcomeFunnelStages[1], false)}
             </div>
-          ))}
+          </div>
         </div>
       </section>
 
       <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
-        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">ภาพรวม Lead → Quote → Won</h3>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">ภาพรวม Lead → Quote → Won</h3>
+          {hasDateFilter ? (
+            <p className="text-[11px] text-slate-500 mt-1">Lead/Quote/Won ที่เกี่ยวข้องกับช่วงวันที่ที่เลือก</p>
+          ) : null}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {[
             ['Leads', reportSummary?.funnel?.leads || 0, '/leads'],

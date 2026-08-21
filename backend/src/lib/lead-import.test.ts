@@ -3,7 +3,10 @@ import {
   buildLeadFromImportRow,
   collapseImportDrafts,
   mapLegacyStepToLeadStage,
+  parseStatusOccurredAt,
+  resolveAssignedUserId,
   resolveImportStage,
+  splitRemarkLogs,
   statusFromStage,
 } from './lead-import.js';
 
@@ -60,8 +63,10 @@ describe('buildLeadFromImportRow', () => {
     expect(lead.stage).toBe('Call');
     expect(lead.status).toBe('Cold');
     expect(lead.educationAuthority).toBe('สช.');
-    expect(lead.legacySaleName).toBe('พิมพ์');
+    expect(lead.legacySaleName).toBe('พิมพ์สุดา พิทักษ์วงค์');
     expect(lead.documentStatus).toBe('ยื่นหนังสือ 10/06/69');
+    expect(lead.statusOccurredAt).toBe('2026-06-10');
+    expect(lead.remarkLogs?.[0]?.content).toBe('ยื่น นส รร');
     expect(lead.contacts[0]?.email).toBe('assumption@ac.ac.th');
     expect(lead.studentCount).toBe(2174);
     expect(lead.upperElementaryStudentCount).toBeUndefined();
@@ -97,5 +102,38 @@ describe('buildLeadFromImportRow', () => {
     const merged = collapseImportDrafts([a, b]);
     expect(merged).toHaveLength(1);
     expect(merged[0].stage).toBe('Presentation');
+  });
+});
+
+describe('parseStatusOccurredAt', () => {
+  it('parses Buddhist and short dates from column P', () => {
+    expect(parseStatusOccurredAt('ยื่นหนังสือ 10/06/69')).toBe('2026-06-10');
+    expect(parseStatusOccurredAt('Ps 29/05/26')).toBe('2026-05-29');
+    expect(parseStatusOccurredAt('ยื่นหนังสือ 30/06')).toBe('2026-06-30');
+    expect(parseStatusOccurredAt('Email 2/7')).toBe('2026-07-02');
+    expect(parseStatusOccurredAt('kst2540@gmail.com')).toBeUndefined();
+  });
+});
+
+describe('splitRemarkLogs', () => {
+  it('splits Excel remarks into a log set', () => {
+    const logs = splitRemarkLogs('ยื่น นส รร -> 22/06 คุณครูได้รับหนังสือ');
+    expect(logs).toHaveLength(2);
+    expect(logs[0].content).toBe('ยื่น นส รร');
+    expect(logs[1].content).toContain('22/06');
+  });
+});
+
+describe('resolveAssignedUserId', () => {
+  const users = [
+    { _id: 'root', name: 'ผู้ดูแลระบบ (Root Admin)', email: 'root@nextgen.co.th', roleId: 'r_exec' },
+    { _id: 'u_p', name: 'พิมพ์สุดา พิทักษ์วงค์', email: 'pimsuda.nextgen@gmail.com', roleId: 'r_sales' },
+    { _id: 'u_y', name: 'วีรินท์รดา พูนสวัสดิ์', email: 'yimewerinrada.nextgen@gmail.com', roleId: 'r_sales' },
+  ];
+
+  it('maps nicknames to real users', () => {
+    expect(resolveAssignedUserId('พิมพ์', users, 'fallback').userId).toBe('u_p');
+    expect(resolveAssignedUserId('ยิ้ม', users, 'fallback').userId).toBe('u_y');
+    expect(resolveAssignedUserId('พี่เกรซ', users, 'fallback').userId).toBe('root');
   });
 });

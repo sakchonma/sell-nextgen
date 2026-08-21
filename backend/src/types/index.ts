@@ -66,7 +66,15 @@ export interface Lead {
   lastContactedAt?: string;
   nextCallAt?: string;
   documentStatus?: string;
+  statusOccurredAt?: string;
+  schoolSize?: string;
+  originalStep?: string;
   remarks?: string;
+  remarkLogs?: Array<{
+    content: string;
+    author?: string;
+    createdAt: Date;
+  }>;
   legacySaleName?: string;
   source?: string;
   campaign?: string;

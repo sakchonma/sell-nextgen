@@ -643,6 +643,12 @@ const leadAttachmentSchema = z.object({
   uploadedBy: idSchema.optional()
 }).strict();
 
+const leadRemarkLogSchema = z.object({
+  content: nonEmptyTextSchema,
+  author: optionalTextSchema,
+  createdAt: dateStringSchema.optional()
+}).passthrough();
+
 const leadStatusSchema = z.enum(['Cold', 'Warm', 'Hot', 'Customer']);
 const leadStageSchema = z.enum(salesFunnelStageSchemaValues);
 const optionalNumberSchema = z.coerce.number().min(0).optional();
@@ -665,7 +671,11 @@ const createLeadBodySchema = z.object({
   lastContactedAt: optionalDateTextSchema,
   nextCallAt: optionalDateTextSchema,
   documentStatus: optionalTextSchema,
+  statusOccurredAt: optionalDateTextSchema,
+  schoolSize: optionalTextSchema,
+  originalStep: optionalTextSchema,
   remarks: optionalTextSchema,
+  remarkLogs: z.array(leadRemarkLogSchema).optional(),
   legacySaleName: optionalTextSchema,
   source: optionalTextSchema,
   campaign: optionalTextSchema,
@@ -690,7 +700,11 @@ const updateLeadBodySchema = z.object({
   lastContactedAt: optionalDateTextSchema,
   nextCallAt: optionalDateTextSchema,
   documentStatus: optionalTextSchema,
+  statusOccurredAt: optionalDateTextSchema,
+  schoolSize: optionalTextSchema,
+  originalStep: optionalTextSchema,
   remarks: optionalTextSchema,
+  remarkLogs: z.array(leadRemarkLogSchema).optional(),
   legacySaleName: optionalTextSchema,
   source: optionalTextSchema,
   campaign: optionalTextSchema,
@@ -1727,9 +1741,8 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     findAll<any>(Users())
   ]);
   const userMap = new Map(users.map((user: any) => [user._id, user]));
-  const leads = leadsRaw
-    .filter((lead: any) => userCanSeeLead(currentUser, lead))
-    .filter((lead: any) => inRangeByDate(lead.createdAt));
+  const visibleLeads = leadsRaw.filter((lead: any) => userCanSeeLead(currentUser, lead));
+  const leads = visibleLeads.filter((lead: any) => inRangeByDate(lead.createdAt));
   const visibleLeadIds = new Set(leads.map((lead: any) => lead._id));
   const opportunities = oppsRaw
     .filter((opp: any) => currentUser.rank >= 4 || opp.assignedTo === currentUser._id || visibleLeadIds.has(opp.leadId))
@@ -1845,10 +1858,64 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     }, [])
     .sort((a: any, b: any) => b.weightedForecast - a.weightedForecast);
 
-  const normalizedLeads = leads.map(lead => ({ ...lead, stage: normalizeLeadStage(lead.stage) }));
+  const leadIdsWithTaskInRange = new Set(
+    tasksByDate.map((task: any) => task.leadId).filter(Boolean)
+  );
+  const leadIdsWithQuoteInRange = new Set(
+    quotes.map((quote: any) => quote.leadId).filter(Boolean)
+  );
+  const allVisibleLeadIds = new Set(visibleLeads.map((lead: any) => lead._id));
+  const leadIdsWithStageChangeInRange = new Set<string>();
+  for (const opp of oppsRaw) {
+    if (currentUser.rank < 4 && opp.assignedTo !== currentUser._id && !allVisibleLeadIds.has(opp.leadId)) {
+      continue;
+    }
+    for (const entry of opp.stageHistory || []) {
+      if (entry.fromStage && inRangeByDate(entry.changedAt)) {
+        leadIdsWithStageChangeInRange.add(opp.leadId);
+        break;
+      }
+    }
+  }
+  const funnelLeads = hasDateFilter
+    ? visibleLeads.filter((lead: any) =>
+        inRangeByDate(lead.lastContactedAt) ||
+        leadIdsWithTaskInRange.has(lead._id) ||
+        leadIdsWithQuoteInRange.has(lead._id) ||
+        leadIdsWithStageChangeInRange.has(lead._id)
+      )
+    : visibleLeads;
+  const funnelLeadIds = new Set(funnelLeads.map((lead: any) => lead._id));
+  const funnelOpportunities = oppsRaw
+    .filter((opp: any) => currentUser.rank >= 4 || opp.assignedTo === currentUser._id || funnelLeadIds.has(opp.leadId))
+    .filter((opp: any) => funnelLeadIds.has(opp.leadId));
+  const funnelQuotes = quotesRaw
+    .filter((quote: any) => currentUser.rank >= 4 || quote.creatorId === currentUser._id || getSupportDepartment(currentUser) === 'Finance')
+    .filter((quote: any) => funnelLeadIds.has(quote.leadId));
+
   const normalizedOpportunities = opportunities.map(opp => ({ ...opp, stage: normalizeOpportunityStage(opp.stage) }));
-  const salesFunnel = buildSalesFunnelReport(normalizedLeads as any[], normalizedOpportunities as any[], quotes);
+  const normalizedFunnelLeads = funnelLeads.map(lead => ({ ...lead, stage: normalizeLeadStage(lead.stage) }));
+  const normalizedFunnelOpportunities = funnelOpportunities.map(opp => ({ ...opp, stage: normalizeOpportunityStage(opp.stage) }));
+  const salesFunnel = buildSalesFunnelReport(
+    normalizedFunnelLeads as any[],
+    normalizedFunnelOpportunities as any[],
+    funnelQuotes
+  );
   const activityBreakdown = buildActivityBreakdown(tasksByDate, quotes, normalizedOpportunities as any[]);
+
+  const funnelWonOpps = funnelOpportunities.filter(
+    (opp: any) => normalizeOpportunityStage(opp.stage) === 'Won'
+  );
+  const funnelOverviewQuotes = hasDateFilter
+    ? funnelQuotes.filter((quote: any) => inRangeByDate(quote.createdAt))
+    : funnelQuotes;
+  const funnelOverviewWon = hasDateFilter
+    ? funnelWonOpps.filter((opp: any) =>
+        (opp.stageHistory || []).some(
+          (entry: any) => entry.toStage === 'Won' && inRangeByDate(entry.changedAt)
+        )
+      )
+    : funnelWonOpps;
 
   res.json({
     scope: currentUser.rank >= 4 ? 'team' : 'personal',
@@ -1870,10 +1937,10 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       overdueInRange: overdueInRangeTasks.length
     },
     funnel: {
-      leads: leads.length,
-      opportunities: opportunities.length,
-      quotes: quotes.length,
-      won: wonOpps.length
+      leads: funnelLeads.length,
+      opportunities: funnelOpportunities.length,
+      quotes: funnelOverviewQuotes.length,
+      won: funnelOverviewWon.length
     },
     salesFunnel,
     activityBreakdown,
@@ -2101,7 +2168,11 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
         lastContactedAt: leadDraft.lastContactedAt ?? existingDuplicate.lastContactedAt,
         nextCallAt: leadDraft.nextCallAt ?? existingDuplicate.nextCallAt,
         documentStatus: leadDraft.documentStatus ?? existingDuplicate.documentStatus,
+        statusOccurredAt: leadDraft.statusOccurredAt ?? existingDuplicate.statusOccurredAt,
+        schoolSize: leadDraft.schoolSize ?? existingDuplicate.schoolSize,
+        originalStep: leadDraft.originalStep ?? existingDuplicate.originalStep,
         remarks: leadDraft.remarks ?? existingDuplicate.remarks,
+        remarkLogs: (leadDraft.remarkLogs || []).length ? leadDraft.remarkLogs : existingDuplicate.remarkLogs,
         legacySaleName: leadDraft.legacySaleName ?? existingDuplicate.legacySaleName,
         source: leadDraft.source || existingDuplicate.source,
         campaign: leadDraft.campaign || existingDuplicate.campaign,
@@ -2171,7 +2242,11 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     lastContactedAt,
     nextCallAt,
     documentStatus,
+    statusOccurredAt,
+    schoolSize,
+    originalStep,
     remarks,
+    remarkLogs,
     legacySaleName,
     source,
     campaign,
@@ -2202,7 +2277,11 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     lastContactedAt,
     nextCallAt,
     documentStatus,
+    statusOccurredAt,
+    schoolSize,
+    originalStep,
     remarks,
+    remarkLogs: remarkLogs || [],
     legacySaleName,
     source,
     campaign,
@@ -2255,7 +2334,11 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     lastContactedAt,
     nextCallAt,
     documentStatus,
+    statusOccurredAt,
+    schoolSize,
+    originalStep,
     remarks,
+    remarkLogs,
     legacySaleName,
     notes,
     contacts,
@@ -2317,7 +2400,13 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     lastContactedAt: lastContactedAt !== undefined ? lastContactedAt : lead.lastContactedAt,
     nextCallAt: nextCallAt !== undefined ? nextCallAt : lead.nextCallAt,
     documentStatus: documentStatus !== undefined ? documentStatus : lead.documentStatus,
+    statusOccurredAt: statusOccurredAt !== undefined ? statusOccurredAt : lead.statusOccurredAt,
+    schoolSize: schoolSize !== undefined ? schoolSize : lead.schoolSize,
+    originalStep: originalStep !== undefined ? originalStep : lead.originalStep,
     remarks: remarks !== undefined ? remarks : lead.remarks,
+    remarkLogs: remarkLogs
+      ? [...(lead.remarkLogs || []), ...remarkLogs.map((item: any) => ({ ...item, createdAt: item.createdAt || new Date() }))]
+      : lead.remarkLogs,
     legacySaleName: legacySaleName !== undefined ? legacySaleName : lead.legacySaleName,
     source: source !== undefined ? source : lead.source,
     campaign: campaign !== undefined ? campaign : lead.campaign,
