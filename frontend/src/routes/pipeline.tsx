@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 import { filterLeadsBySearch } from '../lib/lead-search';
-import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue } from '../lib/sales-funnel-stages';
+import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue, stageRequiresEventAt, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -48,6 +48,9 @@ function PipelineComponent() {
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [pendingStage, setPendingStage] = useState<{ lead: any; stage: string } | null>(null);
   const [lostReason, setLostReason] = useState('');
+  const [documentChannel, setDocumentChannel] = useState('Email');
+  const [appointmentKind, setAppointmentKind] = useState('Present');
+  const [stageEventAt, setStageEventAt] = useState('');
   const [draggingId, setDraggingId] = useState('');
   const [error, setError] = useState('');
   const [newTitle, setNewTitle] = useState('');
@@ -170,11 +173,12 @@ function PipelineComponent() {
       .catch(err => setError(err.message || 'สร้าง opportunity ไม่สำเร็จ'));
   };
 
-  const updateLeadStage = (lead: any, stage: string, reason?: string) => {
+  const updateLeadStage = (lead: any, stage: string, reason?: string, extras?: Record<string, unknown>) => {
     if (!canManagePipeline) return;
     apiJson(`/api/leads/${lead._id}`, {
       stage,
       transferReason: reason,
+      ...extras,
     }, { method: 'PUT' })
       .then(() => {
         setPendingStage(null);
@@ -189,6 +193,13 @@ function PipelineComponent() {
     if (stage === 'Lost') {
       setPendingStage({ lead, stage });
       setLostReason('');
+      return;
+    }
+    if (stage === 'DocumentSent' || stageRequiresEventAt(stage)) {
+      setPendingStage({ lead, stage });
+      setDocumentChannel(lead.documentChannel || 'Email');
+      setAppointmentKind(lead.appointmentKind || 'Present');
+      setStageEventAt('');
       return;
     }
     updateLeadStage(lead, stage);
@@ -502,7 +513,7 @@ function PipelineComponent() {
         </div>
       )}
 
-      {pendingStage && canManagePipeline && (
+      {pendingStage && canManagePipeline && pendingStage.stage === 'Lost' && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <form
             onSubmit={e => {
@@ -516,6 +527,50 @@ function PipelineComponent() {
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setPendingStage(null)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs text-slate-400">ยกเลิก</button>
               <button type="submit" className="px-4 py-2 rounded-lg bg-rose-600 text-xs font-semibold text-white">บันทึก Lost</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {pendingStage && canManagePipeline && pendingStage.stage !== 'Lost' && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              const extras: Record<string, unknown> = {};
+              if (pendingStage.stage === 'DocumentSent') extras.documentChannel = documentChannel;
+              if (pendingStage.stage === 'Appointed') extras.appointmentKind = appointmentKind;
+              if (stageRequiresEventAt(pendingStage.stage)) extras.stageEventAt = new Date(stageEventAt).toISOString();
+              updateLeadStage(pendingStage.lead, pendingStage.stage, undefined, extras);
+            }}
+            className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
+          >
+            <h3 className="text-base font-semibold text-slate-100">รายละเอียดสถานะ</h3>
+            {pendingStage.stage === 'DocumentSent' && (
+              <label className="block text-xs text-slate-400 font-semibold">
+                ช่องทางเอกสาร
+                <select value={documentChannel} onChange={e => setDocumentChannel(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  {DOCUMENT_CHANNEL_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </label>
+            )}
+            {pendingStage.stage === 'Appointed' && (
+              <label className="block text-xs text-slate-400 font-semibold">
+                ประเภทนัด
+                <select value={appointmentKind} onChange={e => setAppointmentKind(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  {APPOINTMENT_KIND_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </label>
+            )}
+            {stageRequiresEventAt(pendingStage.stage) && (
+              <label className="block text-xs text-slate-400 font-semibold">
+                วันเวลา
+                <input type="datetime-local" required value={stageEventAt} onChange={e => setStageEventAt(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              </label>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPendingStage(null)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs text-slate-400">ยกเลิก</button>
+              <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">บันทึก</button>
             </div>
           </form>
         </div>

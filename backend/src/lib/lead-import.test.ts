@@ -3,7 +3,6 @@ import {
   buildLeadFromImportRow,
   collapseImportDrafts,
   mapLegacyStepToLeadStage,
-  parseStatusOccurredAt,
   resolveAssignedUserId,
   resolveImportStage,
   splitRemarkLogs,
@@ -11,37 +10,43 @@ import {
 } from './lead-import.js';
 
 describe('resolveImportStage', () => {
-  it('maps remapped status labels to funnel stages', () => {
-    expect(resolveImportStage('Call', 'รอยื่นหนังสือ')).toBe('Call');
-    expect(resolveImportStage('นัดหมาย', 'ยื่นหนังสือ ติดตามผล')).toBe('Meeting');
-    expect(resolveImportStage('Presentation', 'Present')).toBe('Presentation');
+  it('uses Excel column J as the source of truth', () => {
+    expect(resolveImportStage('Call', 'รอยื่นหนังสือ')).toBe('Called');
+    expect(resolveImportStage('นัดหมาย', 'ยื่นหนังสือ ติดตามผล')).toBe('DocumentSent');
+    expect(resolveImportStage('Presentation', 'Present')).toBe('Presented');
     expect(resolveImportStage('Lost', 'ผอ.ไม่สนใจ ')).toBe('Lost');
-    expect(resolveImportStage('Pending', 'รร. จะติดต่อกลับมา')).toBe('Call');
+    expect(resolveImportStage('Pending', 'รร. จะติดต่อกลับมา')).toBe('DocumentSent');
+    expect(resolveImportStage('', '')).toBe('TargetSchool');
   });
 
   it('maps original Thai steps when status is empty', () => {
-    expect(mapLegacyStepToLeadStage('รอยื่นหนังสือ')).toBe('Call');
-    expect(mapLegacyStepToLeadStage('ยื่นหนังสือ ติดตามผล')).toBe('Meeting');
-    expect(mapLegacyStepToLeadStage('โทรติดตาม ซ้ำ')).toBe('Meeting');
-    expect(mapLegacyStepToLeadStage('Present')).toBe('Presentation');
+    expect(mapLegacyStepToLeadStage('รอยื่นหนังสือ')).toBe('Called');
+    expect(mapLegacyStepToLeadStage('ยื่นหนังสือ ติดตามผล')).toBe('DocumentSent');
+    expect(mapLegacyStepToLeadStage('โทรติดตาม ซ้ำ')).toBe('DocumentSent');
+    expect(mapLegacyStepToLeadStage('ยื่นหนังสือ')).toBe('DocumentSent');
+    expect(mapLegacyStepToLeadStage('Present')).toBe('Presented');
     expect(mapLegacyStepToLeadStage('ผอ.ไม่สนใจ')).toBe('Lost');
-    expect(mapLegacyStepToLeadStage('ไม่มีคนรับสาย ติดต่อซ้ำ')).toBe('Call');
+    expect(mapLegacyStepToLeadStage('ไม่มีคนรับสาย ติดต่อซ้ำ')).toBe('Called');
+    expect(mapLegacyStepToLeadStage('')).toBe('TargetSchool');
   });
 });
 
 describe('statusFromStage', () => {
-  it('derives lead temperature from funnel stage', () => {
-    expect(statusFromStage('Call')).toBe('Cold');
-    expect(statusFromStage('Meeting')).toBe('Warm');
-    expect(statusFromStage('Presentation')).toBe('Warm');
+  it('derives lead temperature from the new funnel stage', () => {
+    expect(statusFromStage('TargetSchool')).toBe('Cold');
+    expect(statusFromStage('Called')).toBe('Cold');
+    expect(statusFromStage('DocumentSent')).toBe('Cold');
+    expect(statusFromStage('Appointed')).toBe('Cold');
+    expect(statusFromStage('Presented')).toBe('Warm');
+    expect(statusFromStage('DemoWorkshop')).toBe('Hot');
+    expect(statusFromStage('Quotation')).toBe('Customer');
+    expect(statusFromStage('Won')).toBe('Customer');
     expect(statusFromStage('Lost')).toBe('Cold');
-    expect(statusFromStage('Call', 'Pending')).toBe('Cold');
-    expect(statusFromStage('Call', 'Warm')).toBe('Warm');
   });
 });
 
 describe('buildLeadFromImportRow', () => {
-  it('reads Thai Excel headers including leading-space school name', () => {
+  it('reads Thai Excel headers and ignores column P', () => {
     const lead = buildLeadFromImportRow({
       ' โรงเรียน': 'โรงเรียนอัสสัมชัญ บางรัก',
       ระดับชั้น: 'มัธยมศึกษาต้น-ปลาย',
@@ -60,19 +65,19 @@ describe('buildLeadFromImportRow', () => {
     }, { index: 0, currentUserId: 'u1' });
 
     expect(lead.schoolName).toBe('โรงเรียนอัสสัมชัญ บางรัก');
-    expect(lead.stage).toBe('Call');
+    expect(lead.stage).toBe('DocumentSent');
     expect(lead.status).toBe('Cold');
     expect(lead.educationAuthority).toBe('สช.');
     expect(lead.legacySaleName).toBe('พิมพ์สุดา พิทักษ์วงค์');
-    expect(lead.documentStatus).toBe('ยื่นหนังสือ 10/06/69');
-    expect(lead.statusOccurredAt).toBe('2026-06-10');
+    expect((lead as any).documentStatus).toBeUndefined();
+    expect((lead as any).statusOccurredAt).toBeUndefined();
     expect(lead.remarkLogs?.[0]?.content).toBe('ยื่น นส รร');
     expect(lead.contacts[0]?.email).toBe('assumption@ac.ac.th');
     expect(lead.studentCount).toBe(2174);
     expect(lead.upperElementaryStudentCount).toBeUndefined();
   });
 
-  it('maps นัดหมาย to Meeting / Warm', () => {
+  it('maps ยื่นหนังสือ to DocumentSent / Cold', () => {
     const lead = buildLeadFromImportRow({
       โรงเรียน: 'โรงเรียนกาญจนะวิทยา',
       สถานะ: 'นัดหมาย',
@@ -80,38 +85,40 @@ describe('buildLeadFromImportRow', () => {
       จังหวัด: 'ชลบุรี',
     }, { index: 1, currentUserId: 'u1' });
 
-    expect(lead.stage).toBe('Meeting');
-    expect(lead.status).toBe('Warm');
+    expect(lead.stage).toBe('DocumentSent');
+    expect(lead.status).toBe('Cold');
     expect(lead.zone).toBe('ภาคตะวันออก');
   });
 
-  it('collapses same school + district + province', () => {
+  it('merges unlabeled column R into remark logs', () => {
+    const lead = buildLeadFromImportRow({
+      โรงเรียน: 'โรงเรียนทดสอบ',
+      Remarks: 'ยื่น นส รร',
+      ผู้ติดต่อ: 'ครูสมศรี',
+      เบอร์โทร: '0811111111',
+    }, { index: 2, currentUserId: 'u1' });
+
+    expect(lead.remarkLogs?.map(item => item.content)).toEqual(['ยื่น นส รร', 'ครูสมศรี']);
+    expect(lead.contacts[0]?.name).toBe('ผู้ติดต่อจากไฟล์นำเข้า');
+  });
+
+  it('collapses same school + district + province using later J stage', () => {
     const a = buildLeadFromImportRow({
       โรงเรียน: 'โรงเรียนเจริญสุขวิทยา',
       เขต: 'อำเภอเมืองชลบุรี',
       จังหวัด: 'ชลบุรี',
-      สถานะ: 'นัดหมาย',
+      อยู่ในขั้นตอน: 'รอยื่นหนังสือ',
     }, { index: 0, currentUserId: 'u1' });
     const b = buildLeadFromImportRow({
       โรงเรียน: 'โรงเรียนเจริญสุขวิทยา',
       เขต: 'อำเภอเมืองชลบุรี',
       จังหวัด: 'ชลบุรี',
-      สถานะ: 'Presentation',
+      อยู่ในขั้นตอน: 'Present',
     }, { index: 1, currentUserId: 'u1' });
 
     const merged = collapseImportDrafts([a, b]);
     expect(merged).toHaveLength(1);
-    expect(merged[0].stage).toBe('Presentation');
-  });
-});
-
-describe('parseStatusOccurredAt', () => {
-  it('parses Buddhist and short dates from column P', () => {
-    expect(parseStatusOccurredAt('ยื่นหนังสือ 10/06/69')).toBe('2026-06-10');
-    expect(parseStatusOccurredAt('Ps 29/05/26')).toBe('2026-05-29');
-    expect(parseStatusOccurredAt('ยื่นหนังสือ 30/06')).toBe('2026-06-30');
-    expect(parseStatusOccurredAt('Email 2/7')).toBe('2026-07-02');
-    expect(parseStatusOccurredAt('kst2540@gmail.com')).toBeUndefined();
+    expect(merged[0].stage).toBe('Presented');
   });
 });
 

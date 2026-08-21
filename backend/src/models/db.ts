@@ -190,7 +190,7 @@ memoryDb.leads = [
     address: 'อ.เมือง จ.สุราษฎร์ธานี',
     zone: 'ภาคใต้',
     status: 'Cold',
-    stage: 'Call',
+    stage: 'Called',
     score: 30,
     gradeLevels: 'ประถมศึกษา',
     province: 'สุราษฎร์ธานี',

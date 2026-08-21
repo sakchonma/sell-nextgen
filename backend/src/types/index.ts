@@ -55,7 +55,7 @@ export interface Lead {
   address: string;
   zone: string;
   status: 'Cold' | 'Warm' | 'Hot' | 'Customer';
-  stage: 'Call' | 'Meeting' | 'Presentation' | 'DemoWorkshop' | 'Quotation' | 'Won' | 'Lost';
+  stage: 'TargetSchool' | 'Called' | 'DocumentSent' | 'Appointed' | 'Presented' | 'DemoWorkshop' | 'Quotation' | 'Won' | 'Lost';
   score: number;
   gradeLevels?: string;
   educationAuthority?: string;
@@ -65,6 +65,9 @@ export interface Lead {
   upperElementaryStudentCount?: number;
   lastContactedAt?: string;
   nextCallAt?: string;
+  documentChannel?: 'Email' | 'SchoolSubmit';
+  appointmentKind?: 'Present' | 'DemoWorkshop';
+  stageEventAt?: string;
   documentStatus?: string;
   statusOccurredAt?: string;
   schoolSize?: string;
@@ -114,7 +117,7 @@ export interface Opportunity {
   _id: string;
   leadId: string;
   title: string;
-  stage: 'Call' | 'Meeting' | 'Presentation' | 'DemoWorkshop' | 'Quotation' | 'Won' | 'Lost';
+  stage: 'TargetSchool' | 'Called' | 'DocumentSent' | 'Appointed' | 'Presented' | 'DemoWorkshop' | 'Quotation' | 'Won' | 'Lost';
   value: number;
   closeDate: Date;
   assignedTo: string;

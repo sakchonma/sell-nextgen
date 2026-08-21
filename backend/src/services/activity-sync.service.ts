@@ -1,5 +1,6 @@
 import { Leads, Tasks, MemoryStore, MemoryCollection, Users } from '../models/db.js';
 import type { Lead, Task } from '../types/index.js';
+import { stageRequiresEventAt, normalizeLeadStage } from '../config/sales-funnel-stages.js';
 
 type SourceRef = { type: string; leadId?: string; noteKey?: string };
 
@@ -63,11 +64,6 @@ async function deleteTaskById(taskId: string) {
 function noteTaskId(leadId: string, noteKey: string) {
   const slug = noteKey.replace(/[^a-zA-Z0-9|]/g, '_').slice(0, 64);
   return `t_sync_${leadId}_note_${slug}`;
-}
-
-async function findTaskOnLeadDate(leadId: string, dateStr: string) {
-  const tasks = await findAll<any>(Tasks(), { leadId });
-  return tasks.find((task: any) => formatDateOnly(task.startAt) === dateStr);
 }
 
 async function findLinkedTask(leadId: string, sourceType: string, noteKey?: string) {
@@ -177,17 +173,75 @@ export async function syncTaskCompletedToLead(task: any) {
   await updateLeadRecord(task.leadId, patch);
 }
 
+export async function syncLeadStageEvent(lead: Lead, creatorId: string) {
+  const linked = await findLinkedTask(lead._id, 'lead_stage_event');
+  const stage = normalizeLeadStage(lead.stage);
+  const eventAt = lead.stageEventAt?.trim();
+
+  if (!stageRequiresEventAt(stage) || !eventAt) {
+    if (linked) await deleteTaskById(linked._id);
+    return;
+  }
+
+  const start = new Date(eventAt);
+  if (Number.isNaN(start.getTime())) {
+    if (linked) await deleteTaskById(linked._id);
+    return;
+  }
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const ownerId = lead.assignedTo || creatorId;
+  let type: Task['type'] = 'Meeting';
+  let titlePrefix = 'นัดหมาย';
+  if (stage === 'Presented') {
+    type = 'Presentation';
+    titlePrefix = 'Present';
+  } else if (stage === 'DemoWorkshop') {
+    type = 'Demo';
+    titlePrefix = 'Demo/Workshop';
+  } else if (stage === 'Appointed') {
+    if (lead.appointmentKind === 'DemoWorkshop') {
+      type = 'Demo';
+      titlePrefix = 'นัด Demo/Workshop';
+    } else {
+      type = 'Presentation';
+      titlePrefix = 'นัด Present';
+    }
+  }
+
+  await upsertTask({
+    _id: linked?._id || `t_sync_${lead._id}_stage_event`,
+    title: `${titlePrefix}: ${lead.schoolName}`,
+    description: `นัดจากสถานะ ${stage}`,
+    type,
+    status: 'Pending' as const,
+    startAt: start,
+    endAt: end,
+    leadId: lead._id,
+    reminderAt: calculateReminderAt(start, 30),
+    reminderMinutesBefore: 30,
+    sourceRef: { type: 'lead_stage_event', leadId: lead._id },
+    creatorId: linked?.creatorId || ownerId,
+    participants: linked?.participants || [{ userId: ownerId, status: 'Accepted' }],
+    comments: linked?.comments || [],
+    createdAt: linked?.createdAt || new Date(),
+    updatedAt: new Date(),
+  });
+}
+
 export async function syncLeadAfterUpdate(
   previousLead: Lead,
   updatedLead: Lead,
   creatorId: string,
   appendedNotes?: any[]
 ) {
-  if (previousLead.nextCallAt !== updatedLead.nextCallAt) {
-    await syncLeadNextCallAt(updatedLead, creatorId);
-  }
   if (appendedNotes?.length) {
     await syncLeadNotesAdded(updatedLead, appendedNotes, creatorId);
+  }
+  const stageChanged = previousLead.stage !== updatedLead.stage;
+  const eventChanged = previousLead.stageEventAt !== updatedLead.stageEventAt;
+  const kindChanged = previousLead.appointmentKind !== updatedLead.appointmentKind;
+  if (stageChanged || eventChanged || kindChanged) {
+    await syncLeadStageEvent(updatedLead, creatorId);
   }
 }
 
@@ -291,25 +345,6 @@ export async function runActivitySyncBackfill(options: { dryRun?: boolean } = {}
     stats.leadsProcessed += 1;
     const creatorId = lead.assignedTo || fallbackUserId;
     const nextCallAt = lead.nextCallAt?.trim();
-
-    if (nextCallAt) {
-      const linked = await findLinkedTask(lead._id, 'lead_next_call');
-      const existingOnDate = linked ? null : await findTaskOnLeadDate(lead._id, nextCallAt);
-
-      if (!linked && existingOnDate && !existingOnDate.sourceRef) {
-        if (!dryRun) {
-          await upsertTask({
-            ...existingOnDate,
-            sourceRef: { type: 'lead_next_call', leadId: lead._id },
-            updatedAt: new Date(),
-          });
-        }
-        stats.existingTasksLinked += 1;
-      } else if (!linked) {
-        if (!dryRun) await syncLeadNextCallAt(lead, creatorId);
-        stats.nextCallTasksSynced += 1;
-      }
-    }
 
     const activityNotes = (lead.notes || []).filter((note: any) =>
       ['Call', 'Meeting', 'FollowUp', 'Email'].includes(note.type || '')

@@ -1,9 +1,10 @@
 import {
-  SALES_FUNNEL_STAGE_CODES,
+  FUNNEL_DISPLAY_STAGE_CODES,
   defaultProbabilityForStage,
   getStageLabel,
   normalizeLeadStage,
   normalizeOpportunityStage,
+  temperatureFromStage,
   type SalesFunnelStage,
 } from '../config/sales-funnel-stages.js';
 import { Leads, Opportunities, Quotations } from '../models/db.js';
@@ -135,6 +136,7 @@ export async function syncOpportunityStageToLead(
   const updatedLead: Lead = {
     ...(lead as Lead),
     stage: nextStage,
+    status: temperatureFromStage(nextStage),
     updatedAt: new Date(),
   };
 
@@ -147,7 +149,7 @@ export function buildSalesFunnelReport(
   opportunities: Opportunity[],
   quotes: any[]
 ) {
-  const stageRows = SALES_FUNNEL_STAGE_CODES.map(code => {
+  const stageRows = FUNNEL_DISPLAY_STAGE_CODES.map(code => {
     const stageLeads = leads.filter(lead => normalizeLeadStage(lead.stage) === code);
     const value = stageLeads.reduce(
       (sum, lead) => sum + resolveStageValueSync(lead._id, code, opportunities, quotes),

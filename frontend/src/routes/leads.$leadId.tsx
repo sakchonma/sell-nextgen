@@ -21,9 +21,23 @@ import { useAuth } from '../hooks/useAuth';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
+import {
+  APPOINTMENT_KIND_OPTIONS,
+  DOCUMENT_CHANNEL_OPTIONS,
+  SALES_FUNNEL_STAGE_OPTIONS,
+  stageRequiresEventAt,
+  temperatureFromStage,
+} from '../lib/sales-funnel-stages';
 
 const LEAD_STATUS_OPTIONS = ['Cold', 'Warm', 'Hot', 'Customer'];
-import { SALES_FUNNEL_STAGE_OPTIONS } from '../lib/sales-funnel-stages';
+
+function toDatetimeLocalValue(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 function noteKey(note: { createdAt: string | Date; author: string }) {
   return `${new Date(note.createdAt).toISOString()}|${note.author}`;
@@ -75,14 +89,15 @@ function LeadDetailComponent() {
     upperElementaryStudentCount: '',
     lastContactedAt: '',
     nextCallAt: '',
-    documentStatus: '',
-    statusOccurredAt: '',
+    documentChannel: '',
+    appointmentKind: '',
+    stageEventAt: '',
     schoolSize: '',
     originalStep: '',
     remarks: '',
     legacySaleName: '',
     status: 'Cold',
-    stage: 'Call',
+    stage: 'TargetSchool',
     score: '',
     source: '',
     campaign: ''
@@ -106,14 +121,15 @@ function LeadDetailComponent() {
           upperElementaryStudentCount: data.upperElementaryStudentCount !== undefined && data.upperElementaryStudentCount !== null ? String(data.upperElementaryStudentCount) : '',
           lastContactedAt: data.lastContactedAt || '',
           nextCallAt: data.nextCallAt || '',
-          documentStatus: data.documentStatus || '',
-          statusOccurredAt: data.statusOccurredAt || '',
+          documentChannel: data.documentChannel || '',
+          appointmentKind: data.appointmentKind || '',
+          stageEventAt: toDatetimeLocalValue(data.stageEventAt),
           schoolSize: data.schoolSize || '',
           originalStep: data.originalStep || '',
           remarks: data.remarks || '',
           legacySaleName: data.legacySaleName || '',
           status: data.status || 'Cold',
-          stage: data.stage || 'Call',
+          stage: data.stage || 'TargetSchool',
           score: data.score !== undefined && data.score !== null ? String(data.score) : '',
           source: data.source || '',
           campaign: data.campaign || ''
@@ -175,13 +191,21 @@ function LeadDetailComponent() {
   };
 
   const handleEditProfileChange = (field: keyof typeof editProfile, value: string) => {
-    setEditProfile(prev => ({ ...prev, [field]: value }));
+    setEditProfile(prev => ({
+      ...prev,
+      [field]: value,
+      ...(field === 'stage' ? { status: temperatureFromStage(value) } : {}),
+    }));
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
       ...editProfile,
+      status: temperatureFromStage(editProfile.stage),
+      documentChannel: editProfile.documentChannel || undefined,
+      appointmentKind: editProfile.appointmentKind || undefined,
+      stageEventAt: editProfile.stageEventAt ? new Date(editProfile.stageEventAt).toISOString() : '',
       studentCount: editProfile.studentCount ? Number(editProfile.studentCount) : undefined,
       upperElementaryStudentCount: editProfile.upperElementaryStudentCount ? Number(editProfile.upperElementaryStudentCount) : undefined,
       score: editProfile.score ? Number(editProfile.score) : undefined
@@ -410,15 +434,17 @@ function LeadDetailComponent() {
                 Source: {lead.source || '-'} {lead.campaign ? `· Campaign: ${lead.campaign}` : ''}
               </div>
             )}
-            {(lead.gradeLevels || lead.studentCount || lead.upperElementaryStudentCount || lead.lastContactedAt || lead.nextCallAt || lead.statusOccurredAt || lead.schoolSize) && (
+            {(lead.gradeLevels || lead.studentCount || lead.upperElementaryStudentCount || lead.lastContactedAt || lead.nextCallAt || lead.schoolSize || lead.educationAuthority || lead.district || lead.province) && (
               <div className="mt-2 flex flex-wrap gap-1.5 text-[9.5px] text-slate-500">
+                {lead.educationAuthority && <span className="px-2 py-0.5 rounded border border-slate-800">สังกัด: {lead.educationAuthority}</span>}
+                {lead.district && <span className="px-2 py-0.5 rounded border border-slate-800">เขต: {lead.district}</span>}
+                {lead.province && <span className="px-2 py-0.5 rounded border border-slate-800">จ.{lead.province}</span>}
                 {lead.gradeLevels && <span className="px-2 py-0.5 rounded border border-slate-800">ระดับชั้น: {lead.gradeLevels}</span>}
                 {lead.schoolSize && <span className="px-2 py-0.5 rounded border border-slate-800">{lead.schoolSize}</span>}
                 {lead.studentCount !== undefined && <span className="px-2 py-0.5 rounded border border-slate-800">นร.: {Number(lead.studentCount).toLocaleString('th-TH')}</span>}
                 {lead.upperElementaryStudentCount !== undefined && <span className="px-2 py-0.5 rounded border border-slate-800">ป.4-6: {Number(lead.upperElementaryStudentCount).toLocaleString('th-TH')}</span>}
-                {lead.lastContactedAt && <span className="px-2 py-0.5 rounded border border-slate-800">ล่าสุด: {lead.lastContactedAt}</span>}
+                {lead.lastContactedAt && <span className="px-2 py-0.5 rounded border border-slate-800">ติดต่อล่าสุด: {lead.lastContactedAt}</span>}
                 {lead.nextCallAt && <span className="px-2 py-0.5 rounded border border-slate-800">นัดโทร: {lead.nextCallAt}</span>}
-                {lead.statusOccurredAt && <span className="px-2 py-0.5 rounded border border-slate-800">วันที่เกิดสถานะ: {lead.statusOccurredAt}</span>}
               </div>
             )}
           </div>
@@ -605,14 +631,13 @@ function LeadDetailComponent() {
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    สถานะ (Status)
-                    <select value={editProfile.status} onChange={e => handleEditProfileChange('status', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                    อุณหภูมิ (อัตโนมัติ)
+                    <select value={editProfile.status} disabled className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-400">
                       {LEAD_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Stage
-                    <label className="text-[10px] text-slate-500 font-semibold">สถานะการขาย</label>
+                    สถานะการขาย
                     <select value={editProfile.stage} onChange={e => handleEditProfileChange('stage', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
                       {SALES_FUNNEL_STAGE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
@@ -683,14 +708,30 @@ function LeadDetailComponent() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    วันที่เกิดสถานะ (คอลัมน์ P)
-                    <input type="date" value={editProfile.statusOccurredAt} onChange={e => handleEditProfileChange('statusOccurredAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                  </label>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    รายละเอียดคอลัมน์ P
-                    <input value={editProfile.documentStatus} onChange={e => handleEditProfileChange('documentStatus', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                  </label>
+                  {editProfile.stage === 'DocumentSent' && (
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      ช่องทางเอกสาร
+                      <select value={editProfile.documentChannel} onChange={e => handleEditProfileChange('documentChannel', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                        <option value="">เลือกช่องทาง</option>
+                        {DOCUMENT_CHANNEL_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {editProfile.stage === 'Appointed' && (
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      ประเภทนัด
+                      <select value={editProfile.appointmentKind} onChange={e => handleEditProfileChange('appointmentKind', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                        <option value="">เลือกประเภท</option>
+                        {APPOINTMENT_KIND_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {stageRequiresEventAt(editProfile.stage) && (
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      วันเวลานัด (สร้างในปฏิทิน)
+                      <input type="datetime-local" value={editProfile.stageEventAt} onChange={e => handleEditProfileChange('stageEventAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    </label>
+                  )}
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     ขั้นตอนเดิม
                     <input value={editProfile.originalStep} onChange={e => handleEditProfileChange('originalStep', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />

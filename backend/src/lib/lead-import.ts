@@ -2,6 +2,8 @@ import zlib from 'zlib';
 import {
   isSalesFunnelStage,
   normalizeLeadStage,
+  scoreFromStage as scoreForFunnelStage,
+  temperatureFromStage,
   type SalesFunnelStage,
 } from '../config/sales-funnel-stages.js';
 import type { Lead } from '../types/index.js';
@@ -21,8 +23,6 @@ export const SALE_NICKNAME_MAP: Record<string, string> = {
   ยิ้ม: 'วีรินท์รดา พูนสวัสดิ์',
   พี่เกรซ: 'root',
 };
-
-const LEAD_STATUSES = ['Cold', 'Warm', 'Hot', 'Customer'] as const;
 
 const HEADER_ALIASES: Record<string, string[]> = {
   schoolName: ['schoolName', 'name', 'รายชื่อโรงเรียน', 'โรงเรียน', '__col_A'],
@@ -50,33 +50,42 @@ const HEADER_ALIASES: Record<string, string[]> = {
 };
 
 const STATUS_TO_STAGE: Record<string, SalesFunnelStage> = {
-  call: 'Call',
-  meeting: 'Meeting',
-  นัดหมาย: 'Meeting',
-  presentation: 'Presentation',
-  present: 'Presentation',
+  call: 'Called',
+  called: 'Called',
+  'callแล้ว': 'Called',
+  meeting: 'Appointed',
+  appointed: 'Appointed',
+  นัดหมาย: 'Appointed',
+  นัดหมายแล้ว: 'Appointed',
+  presentation: 'Presented',
+  present: 'Presented',
+  presented: 'Presented',
   demoworkshop: 'DemoWorkshop',
   'demo/workshop': 'DemoWorkshop',
+  documentsent: 'DocumentSent',
+  ส่งเอกสารแล้ว: 'DocumentSent',
+  targetschool: 'TargetSchool',
   quotation: 'Quotation',
   won: 'Won',
   lost: 'Lost',
-  pending: 'Call',
 };
 
 const STEP_TO_STAGE: Record<string, SalesFunnelStage> = {
-  รอยื่นหนังสือ: 'Call',
-  ยื่นหนังสือ: 'Meeting',
-  ยื่นหนังสือติดตามผล: 'Meeting',
-  โทรติดตามซ้ำ: 'Meeting',
-  present: 'Presentation',
-  presentation: 'Presentation',
+  รอยื่นหนังสือ: 'Called',
+  ไม่มีคนรับสายติดต่อซ้ำ: 'Called',
+  'รร.จะติดต่อกลับมา': 'DocumentSent',
+  ยื่นหนังสือติดตามผล: 'DocumentSent',
+  โทรติดตามซ้ำ: 'DocumentSent',
+  ยื่นหนังสือ: 'DocumentSent',
+  present: 'Presented',
+  presentation: 'Presented',
+  presented: 'Presented',
   'ผอ.ไม่สนใจ': 'Lost',
   ปิดกิจการ: 'Lost',
-  'รร.จะติดต่อกลับมา': 'Call',
-  ไม่มีคนรับสายติดต่อซ้ำ: 'Call',
-  pending: 'Call',
-  นัดหมาย: 'Meeting',
-  call: 'Call',
+  นัดหมาย: 'Appointed',
+  นัดหมายแล้ว: 'Appointed',
+  call: 'Called',
+  called: 'Called',
   lost: 'Lost',
 };
 
@@ -119,42 +128,38 @@ export function mapLegacyStepToLeadStage(step?: string): SalesFunnelStage {
   if (exact) return exact;
 
   const value = String(step || '').toLowerCase();
-  if (!value.trim()) return 'Call';
+  if (!value.trim()) return 'TargetSchool';
   if (value.includes('ปิดกิจการ') || value.includes('ไม่สนใจ') || value.includes('closed lost') || value.includes('lost')) return 'Lost';
   if (value.includes('won') || value.includes('ปิดการขาย')) return 'Won';
   if (value.includes('trial') || value.includes('pilot') || value.includes('ทดลอง') || value.includes('proposal') || value.includes('เสนอราคา') || value.includes('quotation')) return 'Quotation';
-  if (value.includes('present') || value.includes('พรีเซน')) return 'Presentation';
   if (value.includes('demo') || value.includes('workshop') || value.includes('สาธิต')) return 'DemoWorkshop';
-  if (value.includes('นัด') || value.includes('meeting')) return 'Meeting';
-  if (value.includes('โทร') || value.includes('call') || value.includes('ติดต่อ') || value.includes('ยื่น') || value.includes('email') || value.includes('อีเมล')) return 'Call';
-  return 'Call';
+  if (value.includes('present') || value.includes('พรีเซน')) return 'Presented';
+  if (value.includes('นัด') || value.includes('meeting') || value.includes('appointed')) return 'Appointed';
+  if (value.includes('ไม่มีคนรับสาย') || value.includes('รอยื่น')) return 'Called';
+  if (value.includes('ติดต่อกลับ') || value.includes('ยื่นหนังสือ') || value.includes('โทรติดตาม')) return 'DocumentSent';
+  if (value.includes('โทร') || value.includes('call') || value.includes('called')) return 'Called';
+  if (value.includes('เอกสาร') || value.includes('email') || value.includes('อีเมล')) return 'DocumentSent';
+  return 'TargetSchool';
 }
 
 export function resolveImportStage(status?: string, step?: string): SalesFunnelStage {
-  const fromStatus = mapStatusLabelToStage(status);
-  if (fromStatus) return fromStatus;
-  if (isSalesFunnelStage(step)) return step;
-  if (isSalesFunnelStage(status)) return status;
-  return mapLegacyStepToLeadStage(step || status);
-}
-
-export function statusFromStage(stage: SalesFunnelStage, rawStatus?: string): LeadStatus {
-  const raw = String(rawStatus || '').trim();
-  if ((LEAD_STATUSES as readonly string[]).includes(raw) && !mapStatusLabelToStage(raw)) {
-    return raw as LeadStatus;
+  const stepValue = String(step || '').trim();
+  if (stepValue) {
+    if (isSalesFunnelStage(stepValue)) return stepValue;
+    return mapLegacyStepToLeadStage(stepValue);
   }
-  if (stage === 'Won') return 'Customer';
-  if (stage === 'DemoWorkshop' || stage === 'Quotation') return 'Hot';
-  if (stage === 'Meeting' || stage === 'Presentation') return 'Warm';
-  return 'Cold';
+  const statusValue = String(status || '').trim();
+  if (!statusValue) return 'TargetSchool';
+  if (isSalesFunnelStage(statusValue)) return statusValue;
+  return mapLegacyStepToLeadStage(statusValue);
 }
 
-export function scoreFromStage(stage: SalesFunnelStage, status: LeadStatus): number {
-  if (status === 'Customer' || stage === 'Won') return 100;
-  if (status === 'Hot' || stage === 'DemoWorkshop' || stage === 'Quotation') return 85;
-  if (status === 'Warm' || stage === 'Meeting' || stage === 'Presentation') return 60;
-  if (stage === 'Lost') return 0;
-  return 10;
+export function statusFromStage(stage: SalesFunnelStage, _rawStatus?: string): LeadStatus {
+  return temperatureFromStage(stage);
+}
+
+export function scoreFromStage(stage: SalesFunnelStage, _status?: LeadStatus): number {
+  return scoreForFunnelStage(stage);
 }
 
 export function provinceToZone(province?: string) {
@@ -211,16 +216,6 @@ export function parseFlexibleThaiDate(token: string, fallbackYear = 2026): strin
   return date.toISOString().slice(0, 10);
 }
 
-export function parseStatusOccurredAt(cell?: string): string | undefined {
-  if (!cell) return undefined;
-  const matches = String(cell).match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/g) || [];
-  for (const token of matches) {
-    const parsed = parseFlexibleThaiDate(token);
-    if (parsed) return parsed;
-  }
-  return undefined;
-}
-
 export function splitRemarkLogs(raw?: string, author?: string, createdAt?: Date) {
   const text = String(raw || '').trim();
   if (!text) return [] as Array<{ content: string; author?: string; createdAt: Date }>;
@@ -275,19 +270,22 @@ export function buildLeadFromImportRow(row: Record<string, string>, options: Bui
   const emailCell = pickLeadField(row, 'email');
   const email = emailFromCell(emailCell);
   const phone = pickLeadField(row, 'phone');
-  const contactName = pickLeadField(row, 'contactName');
+  const extraRemarks = pickLeadField(row, 'contactName');
   const saleName = pickLeadField(row, 'sale');
   const schoolSize = pickLeadField(row, 'schoolSize');
-  const documentStatus = pickLeadField(row, 'documentStatus');
   const remarks = pickLeadField(row, 'remarks');
   const assigned = resolveAssignedUserId(saleName, options.users || [], options.currentUserId);
-  const statusOccurredAt = parseStatusOccurredAt(documentStatus) || undefined;
-  const remarkLogs = splitRemarkLogs(remarks, assigned.legacySaleName || 'Excel Import', now);
+  const lastContactedAt = excelSerialToDateText(pickLeadField(row, 'lastContactedAt')) || undefined;
+  const nextCallAt = excelSerialToDateText(pickLeadField(row, 'nextCallAt')) || undefined;
+  const remarkLogs = [
+    ...splitRemarkLogs(remarks, assigned.legacySaleName || 'Excel Import', now),
+    ...splitRemarkLogs(extraRemarks, assigned.legacySaleName || 'Excel Import', now),
+  ];
   const noteParts = [
     schoolSize ? `ขนาดโรงเรียน: ${schoolSize}` : '',
     legacyStep ? `ขั้นตอนเดิม: ${legacyStep}` : '',
-    rawStatus && compactKey(rawStatus) === 'pending' ? 'สถานะเดิม: Pending' : '',
-    statusOccurredAt ? `วันที่เกิดสถานะ: ${statusOccurredAt}` : '',
+    lastContactedAt ? `ติดต่อล่าสุด (คอลัมน์ L): ${lastContactedAt}` : '',
+    nextCallAt ? `นัดโทรครั้งถัดไป (คอลัมน์ M): ${nextCallAt}` : '',
     emailCell && !email ? `ข้อมูลช่องอีเมล: ${emailCell}` : '',
   ].filter(Boolean);
 
@@ -305,10 +303,8 @@ export function buildLeadFromImportRow(row: Record<string, string>, options: Bui
     province: province || undefined,
     studentCount: numberFromImportCell(pickLeadField(row, 'studentCount')),
     upperElementaryStudentCount: numberFromImportCell(pickLeadField(row, 'upperElementaryStudentCount')),
-    lastContactedAt: excelSerialToDateText(pickLeadField(row, 'lastContactedAt')) || undefined,
-    nextCallAt: excelSerialToDateText(pickLeadField(row, 'nextCallAt')) || undefined,
-    documentStatus: documentStatus || undefined,
-    statusOccurredAt,
+    lastContactedAt,
+    nextCallAt,
     schoolSize: schoolSize || undefined,
     originalStep: legacyStep || undefined,
     remarks: remarks || undefined,
@@ -317,8 +313,8 @@ export function buildLeadFromImportRow(row: Record<string, string>, options: Bui
     source: pickLeadField(row, 'source') || 'Excel Import',
     campaign: pickLeadField(row, 'campaign') || 'สรุปรายชื่อโรงเรียนกำลังดำเนินการ',
     archived: stage === 'Lost' && String(legacyStep || '').includes('ปิดกิจการ'),
-    contacts: phone || email || contactName ? [{
-      name: contactName || 'ผู้ติดต่อจากไฟล์นำเข้า',
+    contacts: phone || email ? [{
+      name: 'ผู้ติดต่อจากไฟล์นำเข้า',
       position: emailCell && !email ? emailCell : '',
       phone,
       email,

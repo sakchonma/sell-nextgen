@@ -53,6 +53,8 @@ import {
   normalizeLeadStage,
   normalizeOpportunityStage,
   salesFunnelStageSchemaValues,
+  scoreFromStage,
+  temperatureFromStage,
 } from './config/sales-funnel-stages.js';
 import {
   buildLeadFromImportRow,
@@ -408,7 +410,7 @@ const opportunityStageSchema = z.enum(salesFunnelStageSchemaValues);
 const createOpportunityBodySchema = z.object({
   leadId: idSchema,
   title: nonEmptyTextSchema,
-  stage: opportunityStageSchema.default('Call'),
+  stage: opportunityStageSchema.default('TargetSchool'),
   value: moneySchema.default(0),
   closeDate: dateStringSchema,
   assignedTo: idSchema.optional(),
@@ -660,7 +662,7 @@ const createLeadBodySchema = z.object({
   address: optionalTextSchema,
   zone: optionalTextSchema,
   status: leadStatusSchema.default('Cold'),
-  stage: leadStageSchema.default('Call'),
+  stage: leadStageSchema.default('TargetSchool'),
   score: z.coerce.number().min(0).max(100).default(10),
   gradeLevels: optionalTextSchema,
   educationAuthority: optionalTextSchema,
@@ -670,8 +672,9 @@ const createLeadBodySchema = z.object({
   upperElementaryStudentCount: optionalNumberSchema,
   lastContactedAt: optionalDateTextSchema,
   nextCallAt: optionalDateTextSchema,
-  documentStatus: optionalTextSchema,
-  statusOccurredAt: optionalDateTextSchema,
+  documentChannel: z.enum(['Email', 'SchoolSubmit']).optional(),
+  appointmentKind: z.enum(['Present', 'DemoWorkshop']).optional(),
+  stageEventAt: optionalDateTextSchema,
   schoolSize: optionalTextSchema,
   originalStep: optionalTextSchema,
   remarks: optionalTextSchema,
@@ -699,8 +702,9 @@ const updateLeadBodySchema = z.object({
   upperElementaryStudentCount: optionalNumberSchema,
   lastContactedAt: optionalDateTextSchema,
   nextCallAt: optionalDateTextSchema,
-  documentStatus: optionalTextSchema,
-  statusOccurredAt: optionalDateTextSchema,
+  documentChannel: z.enum(['Email', 'SchoolSubmit']).optional(),
+  appointmentKind: z.enum(['Present', 'DemoWorkshop']).optional(),
+  stageEventAt: optionalDateTextSchema,
   schoolSize: optionalTextSchema,
   originalStep: optionalTextSchema,
   remarks: optionalTextSchema,
@@ -1880,6 +1884,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
   const funnelLeads = hasDateFilter
     ? visibleLeads.filter((lead: any) =>
         inRangeByDate(lead.lastContactedAt) ||
+        inRangeByDate(lead.stageEventAt) ||
         leadIdsWithTaskInRange.has(lead._id) ||
         leadIdsWithQuoteInRange.has(lead._id) ||
         leadIdsWithStageChangeInRange.has(lead._id)
@@ -2079,7 +2084,7 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
   const allLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanSeeLead(currentUser, lead));
   const escapeCsv = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const rows = [
-    ['schoolName', 'address', 'zone', 'status', 'stage', 'score', 'gradeLevels', 'educationAuthority', 'district', 'province', 'studentCount', 'upperElementaryStudentCount', 'lastContactedAt', 'nextCallAt', 'documentStatus', 'remarks', 'legacySaleName', 'source', 'campaign', 'assignedTo', 'contacts'].join(','),
+    ['schoolName', 'address', 'zone', 'status', 'stage', 'score', 'gradeLevels', 'educationAuthority', 'district', 'province', 'studentCount', 'upperElementaryStudentCount', 'lastContactedAt', 'nextCallAt', 'remarks', 'legacySaleName', 'source', 'campaign', 'assignedTo', 'contacts'].join(','),
     ...allLeads.map(lead => [
       lead.schoolName,
       lead.address,
@@ -2095,7 +2100,6 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
       lead.upperElementaryStudentCount,
       lead.lastContactedAt,
       lead.nextCallAt,
-      lead.documentStatus,
       lead.remarks,
       lead.legacySaleName,
       lead.source,
@@ -2167,10 +2171,13 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
         upperElementaryStudentCount: leadDraft.upperElementaryStudentCount ?? existingDuplicate.upperElementaryStudentCount,
         lastContactedAt: leadDraft.lastContactedAt ?? existingDuplicate.lastContactedAt,
         nextCallAt: leadDraft.nextCallAt ?? existingDuplicate.nextCallAt,
-        documentStatus: leadDraft.documentStatus ?? existingDuplicate.documentStatus,
-        statusOccurredAt: leadDraft.statusOccurredAt ?? existingDuplicate.statusOccurredAt,
+        documentChannel: leadDraft.documentChannel,
+        appointmentKind: leadDraft.appointmentKind,
+        stageEventAt: leadDraft.stageEventAt,
         schoolSize: leadDraft.schoolSize ?? existingDuplicate.schoolSize,
         originalStep: leadDraft.originalStep ?? existingDuplicate.originalStep,
+        documentStatus: '',
+        statusOccurredAt: '',
         remarks: leadDraft.remarks ?? existingDuplicate.remarks,
         remarkLogs: (leadDraft.remarkLogs || []).length ? leadDraft.remarkLogs : existingDuplicate.remarkLogs,
         legacySaleName: leadDraft.legacySaleName ?? existingDuplicate.legacySaleName,
@@ -2179,7 +2186,15 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
         archived: leadDraft.archived ?? existingDuplicate.archived,
         contacts: (leadDraft.contacts || []).length ? leadDraft.contacts : existingDuplicate.contacts,
         assignedTo: leadDraft.assignedTo || existingDuplicate.assignedTo,
-        notes: existingDuplicate.notes || [],
+        notes: [
+          ...((existingDuplicate.notes || []).filter((note: any) =>
+            !String(note.content || '').includes('วันที่เกิดสถานะ') &&
+            !String(note.content || '').includes('คอลัมน์ P')
+          )),
+          ...((leadDraft.notes || []).filter((note: any) =>
+            !(existingDuplicate.notes || []).some((item: any) => item.content === note.content)
+          )),
+        ],
         updatedAt: new Date()
       };
       if ('insertOne' in Leads() && !(Leads() instanceof MemoryCollection)) {
@@ -2230,7 +2245,6 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     schoolName,
     address,
     zone,
-    status,
     stage,
     score,
     gradeLevels,
@@ -2241,8 +2255,9 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     upperElementaryStudentCount,
     lastContactedAt,
     nextCallAt,
-    documentStatus,
-    statusOccurredAt,
+    documentChannel,
+    appointmentKind,
+    stageEventAt,
     schoolSize,
     originalStep,
     remarks,
@@ -2260,14 +2275,15 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     return;
   }
   const ownerId = assignedTo || currentUser._id;
+  const nextStage = normalizeLeadStage(stage || 'TargetSchool');
   const newLead = {
     _id: `l_${Date.now()}`,
     schoolName,
     address,
     zone,
-    status: status || 'Cold',
-    stage: normalizeLeadStage(stage || 'Call'),
-    score: Number(score) || 10,
+    status: temperatureFromStage(nextStage),
+    stage: nextStage,
+    score: Number(score) || scoreFromStage(nextStage),
     gradeLevels,
     educationAuthority,
     district,
@@ -2276,8 +2292,9 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     upperElementaryStudentCount,
     lastContactedAt,
     nextCallAt,
-    documentStatus,
-    statusOccurredAt,
+    documentChannel,
+    appointmentKind,
+    stageEventAt,
     schoolSize,
     originalStep,
     remarks,
@@ -2302,6 +2319,7 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
 
   await Leads().insertOne(newLead as any);
   await syncLeadStageToOpportunity(newLead as any, undefined, currentUser._id, 'Initial lead stage');
+  await syncLeadAfterUpdate({ ...newLead, stageEventAt: undefined, appointmentKind: undefined } as any, newLead as any, currentUser._id);
   res.status(201).json(hydrateLeadForResponse(newLead));
 });
 
@@ -2322,7 +2340,6 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     schoolName,
     address,
     zone,
-    status,
     stage,
     score,
     gradeLevels,
@@ -2333,8 +2350,9 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     upperElementaryStudentCount,
     lastContactedAt,
     nextCallAt,
-    documentStatus,
-    statusOccurredAt,
+    documentChannel,
+    appointmentKind,
+    stageEventAt,
     schoolSize,
     originalStep,
     remarks,
@@ -2370,6 +2388,8 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     }
   }
   const previousStage = normalizeLeadStage(lead.stage);
+  const nextStage = stage !== undefined ? normalizeLeadStage(stage) : previousStage;
+  const nextStatus = temperatureFromStage(nextStage);
   const isTransfer = assignedTo && assignedTo !== lead.assignedTo;
   const assignmentHistory = isTransfer
     ? [
@@ -2388,9 +2408,9 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     schoolName: schoolName !== undefined ? schoolName : lead.schoolName,
     address: address !== undefined ? address : lead.address,
     zone: zone !== undefined ? zone : lead.zone,
-    status: status || lead.status,
-    stage: stage !== undefined ? normalizeLeadStage(stage) : previousStage,
-    score: score !== undefined ? Number(score) : lead.score,
+    status: nextStatus,
+    stage: nextStage,
+    score: score !== undefined ? Number(score) : (stage !== undefined ? scoreFromStage(nextStage) : lead.score),
     gradeLevels: gradeLevels !== undefined ? gradeLevels : lead.gradeLevels,
     educationAuthority: educationAuthority !== undefined ? educationAuthority : lead.educationAuthority,
     district: district !== undefined ? district : lead.district,
@@ -2399,9 +2419,12 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     upperElementaryStudentCount: upperElementaryStudentCount !== undefined ? Number(upperElementaryStudentCount) : lead.upperElementaryStudentCount,
     lastContactedAt: lastContactedAt !== undefined ? lastContactedAt : lead.lastContactedAt,
     nextCallAt: nextCallAt !== undefined ? nextCallAt : lead.nextCallAt,
-    documentStatus: documentStatus !== undefined ? documentStatus : lead.documentStatus,
-    statusOccurredAt: statusOccurredAt !== undefined ? statusOccurredAt : lead.statusOccurredAt,
+    documentChannel: documentChannel !== undefined ? documentChannel : lead.documentChannel,
+    appointmentKind: appointmentKind !== undefined ? appointmentKind : lead.appointmentKind,
+    stageEventAt: stageEventAt !== undefined ? stageEventAt : lead.stageEventAt,
     schoolSize: schoolSize !== undefined ? schoolSize : lead.schoolSize,
+    documentStatus: '',
+    statusOccurredAt: '',
     originalStep: originalStep !== undefined ? originalStep : lead.originalStep,
     remarks: remarks !== undefined ? remarks : lead.remarks,
     remarkLogs: remarkLogs
@@ -2723,7 +2746,7 @@ app.post('/api/opportunities', requirePermission('managePipeline'), validateBody
     return;
   }
   const ownerId = assignedTo || currentUser._id;
-  const nextStage = normalizeOpportunityStage(stage || 'Call');
+  const nextStage = normalizeOpportunityStage(stage || 'TargetSchool');
   const newOpp = {
     _id: `o_${Date.now()}`,
     leadId,

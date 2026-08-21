@@ -13,7 +13,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
-import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle } from '../lib/sales-funnel-stages';
+import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle, stageRequiresEventAt, temperatureFromStage, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
 const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
 const LEADS_PAGE_SIZE = 20;
@@ -39,7 +39,11 @@ function LeadsIndexComponent() {
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadAddress, setNewLeadAddress] = useState('');
   const [newLeadZone, setNewLeadZone] = useState('ภาคเหนือ');
-  const [newLeadStage, setNewLeadStage] = useState('Call');
+  const [newLeadStage, setNewLeadStage] = useState('TargetSchool');
+  const [pendingStage, setPendingStage] = useState<{ lead: any; stage: string } | null>(null);
+  const [documentChannel, setDocumentChannel] = useState('Email');
+  const [appointmentKind, setAppointmentKind] = useState('Present');
+  const [stageEventAt, setStageEventAt] = useState('');
   const [newLeadSource, setNewLeadSource] = useState('Outbound');
   const [newLeadCampaign, setNewLeadCampaign] = useState('');
   const [leadError, setLeadError] = useState('');
@@ -137,7 +141,7 @@ function LeadsIndexComponent() {
         setShowAddModal(false);
         setNewLeadName('');
         setNewLeadAddress('');
-        setNewLeadStage('Call');
+        setNewLeadStage('TargetSchool');
         setNewLeadCampaign('');
         fetchLeads('reset');
       })
@@ -168,38 +172,33 @@ function LeadsIndexComponent() {
     }
   };
 
-  const handleStatusChange = (lead: any, status: string) => {
-    if (lead.status === status) return;
-    const previousStatus = lead.status;
+  const applyStageChange = (lead: any, stage: string, extras?: Record<string, unknown>) => {
+    const previousStage = lead.stage || 'TargetSchool';
     setUpdatingLeadId(lead._id);
-    setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, status } : item));
+    setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage, status: temperatureFromStage(stage) } : item));
 
-    apiJson(`/api/leads/${lead._id}`, { status }, { method: 'PUT' })
+    apiJson(`/api/leads/${lead._id}`, { stage, ...extras }, { method: 'PUT' })
       .then(updatedLead => {
         setLeads(prev => prev.map(item => item._id === lead._id ? updatedLead : item));
-      })
-      .catch(err => {
-        console.error('Failed to update lead status:', err);
-        setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, status: previousStatus } : item));
-      })
-      .finally(() => setUpdatingLeadId(''));
-  };
-
-  const handleStageChange = (lead: any, stage: string) => {
-    if ((lead.stage || 'Call') === stage) return;
-    const previousStage = lead.stage || 'Call';
-    setUpdatingLeadId(lead._id);
-    setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage } : item));
-
-    apiJson(`/api/leads/${lead._id}`, { stage }, { method: 'PUT' })
-      .then(updatedLead => {
-        setLeads(prev => prev.map(item => item._id === lead._id ? updatedLead : item));
+        setPendingStage(null);
       })
       .catch(err => {
         console.error('Failed to update lead stage:', err);
         setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage: previousStage } : item));
       })
       .finally(() => setUpdatingLeadId(''));
+  };
+
+  const handleStageChange = (lead: any, stage: string) => {
+    if ((lead.stage || 'TargetSchool') === stage) return;
+    if (stage === 'DocumentSent' || stageRequiresEventAt(stage)) {
+      setPendingStage({ lead, stage });
+      setDocumentChannel(lead.documentChannel || 'Email');
+      setAppointmentKind(lead.appointmentKind || 'Present');
+      setStageEventAt('');
+      return;
+    }
+    applyStageChange(lead, stage);
   };
 
   const getStatusStyle = (status: string) => {
@@ -284,6 +283,7 @@ function LeadsIndexComponent() {
             <option value="Cold">Cold</option>
             <option value="Warm">Warm</option>
             <option value="Hot">Hot</option>
+            <option value="Customer">Customer</option>
           </select>
         </div>
 
@@ -350,29 +350,16 @@ function LeadsIndexComponent() {
               </div>
               <div className="mt-2 flex shrink-0 flex-wrap gap-1.5">
                 <div className="relative">
-                  <select
-                    value={['Cold', 'Warm', 'Hot'].includes(lead.status) ? lead.status : 'Cold'}
-                    onChange={(e) => handleStatusChange(lead, e.target.value)}
-                    disabled={updatingLeadId === lead._id}
-                    className={`appearance-none pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStatusStyle(lead.status)}`}
-                    title="เปลี่ยนสถานะลีด"
-                  >
-                    <option value="Cold">Cold</option>
-                    <option value="Warm">Warm</option>
-                    <option value="Hot">Hot</option>
-                  </select>
-                  {updatingLeadId === lead._id ? (
-                    <Loader2 size={10} className="absolute right-1.5 top-1.5 animate-spin text-slate-400" />
-                  ) : (
-                    <span className="pointer-events-none absolute right-1.5 top-1 text-[9px] text-current">▾</span>
-                  )}
+                  <span className={`inline-flex px-2 py-1 rounded text-[10px] border font-bold ${getStatusStyle(lead.status)}`}>
+                    {lead.status}
+                  </span>
                 </div>
                 <div className="relative">
                   <select
-                    value={SALES_FUNNEL_STAGE_OPTIONS.some(opt => opt.value === lead.stage) ? lead.stage : 'Call'}
+                    value={SALES_FUNNEL_STAGE_OPTIONS.some(opt => opt.value === lead.stage) ? lead.stage : 'TargetSchool'}
                     onChange={(e) => handleStageChange(lead, e.target.value)}
                     disabled={updatingLeadId === lead._id}
-                    className={`appearance-none max-w-36 pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'Call')}`}
+                    className={`appearance-none max-w-36 pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getStageStyle(lead.stage || 'TargetSchool')}`}
                     title="สถานะการขาย"
                   >
                     {SALES_FUNNEL_STAGE_OPTIONS.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
@@ -514,6 +501,50 @@ function LeadsIndexComponent() {
               >
                 บันทึกโรงเรียน
               </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {pendingStage && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              const extras: Record<string, unknown> = {};
+              if (pendingStage.stage === 'DocumentSent') extras.documentChannel = documentChannel;
+              if (pendingStage.stage === 'Appointed') extras.appointmentKind = appointmentKind;
+              if (stageRequiresEventAt(pendingStage.stage)) extras.stageEventAt = new Date(stageEventAt).toISOString();
+              applyStageChange(pendingStage.lead, pendingStage.stage, extras);
+            }}
+            className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
+          >
+            <h3 className="text-base font-semibold text-slate-100">รายละเอียดสถานะ</h3>
+            {pendingStage.stage === 'DocumentSent' && (
+              <label className="block text-xs text-slate-400 font-semibold">
+                ช่องทางเอกสาร
+                <select value={documentChannel} onChange={e => setDocumentChannel(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  {DOCUMENT_CHANNEL_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </label>
+            )}
+            {pendingStage.stage === 'Appointed' && (
+              <label className="block text-xs text-slate-400 font-semibold">
+                ประเภทนัด
+                <select value={appointmentKind} onChange={e => setAppointmentKind(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                  {APPOINTMENT_KIND_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </label>
+            )}
+            {stageRequiresEventAt(pendingStage.stage) && (
+              <label className="block text-xs text-slate-400 font-semibold">
+                วันเวลา
+                <input type="datetime-local" required value={stageEventAt} onChange={e => setStageEventAt(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              </label>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPendingStage(null)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs text-slate-400">ยกเลิก</button>
+              <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">บันทึก</button>
             </div>
           </form>
         </div>

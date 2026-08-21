@@ -6,7 +6,7 @@ import { apiFetch } from '../lib/api';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
 import { dateKey } from '../lib/datetime';
-import { getPipelineColumnStyle, getSalesFunnelStageLabel } from '../lib/sales-funnel-stages';
+import { FUNNEL_DISPLAY_STAGE_CODES, getPipelineColumnStyle, getSalesFunnelStageLabel } from '../lib/sales-funnel-stages';
 import { ModalShell, PaginationControls } from '../components/ui';
 
 export const Route = createRoute({
@@ -24,16 +24,18 @@ type DetailModalKey =
   | 'overdueInRange'
   | 'slaCompleted'
   | 'slaBreached'
-  | 'funnelCall'
-  | 'funnelMeeting'
-  | 'funnelPresentation'
+  | 'funnelCalled'
+  | 'funnelDocumentSent'
+  | 'funnelAppointed'
+  | 'funnelPresented'
   | 'funnelDemoWorkshop'
   | 'funnelQuotation'
   | 'funnelWon'
   | 'funnelLost'
   | null;
 
-const PIPELINE_FUNNEL_STAGE_CODES = ['Call', 'Meeting', 'Presentation', 'DemoWorkshop', 'Quotation'] as const;
+const FUNNEL_ROW_1 = ['Called', 'DocumentSent', 'Appointed', 'Presented'] as const;
+const FUNNEL_ROW_2 = ['DemoWorkshop', 'Quotation', 'Won', 'Lost'] as const;
 
 function emptyFunnelStage(code: string) {
   return {
@@ -135,29 +137,23 @@ function ReportsComponent() {
   }, [salesFunnelStages]);
 
   const funnelModalKeyByCode: Record<string, Exclude<DetailModalKey, null>> = {
-    Call: 'funnelCall',
-    Meeting: 'funnelMeeting',
-    Presentation: 'funnelPresentation',
+    Called: 'funnelCalled',
+    DocumentSent: 'funnelDocumentSent',
+    Appointed: 'funnelAppointed',
+    Presented: 'funnelPresented',
     DemoWorkshop: 'funnelDemoWorkshop',
     Quotation: 'funnelQuotation',
     Won: 'funnelWon',
     Lost: 'funnelLost',
   };
 
-  const pipelineFunnelStages = useMemo(
-    () => PIPELINE_FUNNEL_STAGE_CODES.map(code => funnelStageByCode.get(code) || emptyFunnelStage(code)),
-    [funnelStageByCode]
-  );
-  const outcomeFunnelStages = useMemo(
-    () => [
-      funnelStageByCode.get('Won') || emptyFunnelStage('Won'),
-      funnelStageByCode.get('Lost') || emptyFunnelStage('Lost'),
-    ],
+  const funnelDisplayStages = useMemo(
+    () => FUNNEL_DISPLAY_STAGE_CODES.map(code => funnelStageByCode.get(code) || emptyFunnelStage(code)),
     [funnelStageByCode]
   );
   const funnelMaxCount = useMemo(
-    () => Math.max(1, ...[...pipelineFunnelStages, ...outcomeFunnelStages].map((row: any) => row.count || 0)),
-    [pipelineFunnelStages, outcomeFunnelStages]
+    () => Math.max(1, ...funnelDisplayStages.map((row: any) => row.count || 0)),
+    [funnelDisplayStages]
   );
 
   const renderFunnelCard = (row: any, showArrow: boolean) => {
@@ -322,9 +318,10 @@ function ReportsComponent() {
         return { title: 'คำขอที่เสร็จสิ้น', subtitle: `${slaCompletedRows.length} รายการ`, kind: 'sla' as const, rows: slaCompletedRows };
       case 'slaBreached':
         return { title: 'คำขอที่เกิน SLA', subtitle: `${slaBreachedRows.length} รายการ`, kind: 'sla' as const, rows: slaBreachedRows };
-      case 'funnelCall':
-      case 'funnelMeeting':
-      case 'funnelPresentation':
+      case 'funnelCalled':
+      case 'funnelDocumentSent':
+      case 'funnelAppointed':
+      case 'funnelPresented':
       case 'funnelDemoWorkshop':
       case 'funnelQuotation':
       case 'funnelWon':
@@ -420,7 +417,7 @@ function ReportsComponent() {
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">สรุป Sales Funnel</h3>
             <p className="text-[11px] text-slate-500 mt-1">
               {hasDateFilter
-                ? 'Lead ที่มีกิจกรรม/อัปเดตในช่วงที่เลือก ตามสถานะปัจจุบัน · กดการ์ดเพื่อดูรายละเอียด'
+                ? 'Lead ที่ติดต่อล่าสุดหรือมีวันนัดในช่วงที่เลือก · กดการ์ดเพื่อดูรายละเอียด'
                 : 'จำนวน Lead และมูลค่าตามสถานะการขายปัจจุบัน · กดการ์ดเพื่อดูรายละเอียด'}
             </p>
           </div>
@@ -436,17 +433,14 @@ function ReportsComponent() {
 
         <div className="space-y-3">
           <div className="flex items-stretch w-full gap-0">
-            {pipelineFunnelStages.slice(0, 3).map((row: any, index: number) =>
-              renderFunnelCard(row, index < 2)
+            {FUNNEL_ROW_1.map((code, index) =>
+              renderFunnelCard(funnelStageByCode.get(code) || emptyFunnelStage(code), index < FUNNEL_ROW_1.length - 1)
             )}
           </div>
           <div className="flex items-stretch w-full gap-0">
-            {renderFunnelCard(pipelineFunnelStages[3], true)}
-            {renderFunnelCard(pipelineFunnelStages[4], true)}
-            <div className="flex flex-1 min-w-0 gap-2">
-              {renderFunnelCard(outcomeFunnelStages[0], false)}
-              {renderFunnelCard(outcomeFunnelStages[1], false)}
-            </div>
+            {FUNNEL_ROW_2.map((code, index) =>
+              renderFunnelCard(funnelStageByCode.get(code) || emptyFunnelStage(code), index < FUNNEL_ROW_2.length - 1)
+            )}
           </div>
         </div>
       </section>

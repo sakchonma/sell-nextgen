@@ -90,6 +90,9 @@ async function main() {
 
   const leadsCol = db.collection('leads');
   const oppsCol = db.collection('opportunities');
+  const tasksCol = db.collection('tasks');
+  const calendarWipe = await tasksCol.deleteMany({ leadId: { $exists: true, $nin: [null, ''] } });
+  console.log(`[import-schools]: cleared calendar tasks=${calendarWipe.deletedCount}`);
   const existingLeads = await leadsCol.find({}).toArray();
   const existingByKey = new Map(existingLeads.map(lead => [leadIdentityKey(lead as unknown as LeadImportDraft), lead]));
 
@@ -104,9 +107,19 @@ async function main() {
           ...draft,
           _id: existing._id,
           createdAt: existing.createdAt || draft.createdAt,
-          notes: existing.notes || draft.notes,
+          notes: [
+            ...((existing.notes || []).filter((note: any) =>
+              !String(note.content || '').includes('วันที่เกิดสถานะ') &&
+              !String(note.content || '').includes('คอลัมน์ P')
+            )),
+            ...((draft.notes || []).filter(note =>
+              !(existing.notes || []).some((item: any) => item.content === note.content)
+            )),
+          ],
           assignmentHistory: existing.assignmentHistory || draft.assignmentHistory,
           assignedTo: draft.assignedTo,
+          documentStatus: '',
+          statusOccurredAt: '',
           updatedAt: now,
         }
       : draft;
@@ -171,6 +184,8 @@ async function main() {
   }
 
   console.log(`[import-schools]: inserted=${inserted} updated=${updated}`);
+  const wipeP = await leadsCol.updateMany({}, { $unset: { documentStatus: '', statusOccurredAt: '' } });
+  console.log(`[import-schools]: wiped column P fields=${wipeP.modifiedCount}`);
 }
 
 main()
