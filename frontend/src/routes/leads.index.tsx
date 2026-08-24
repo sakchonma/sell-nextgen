@@ -13,6 +13,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { ModalShell } from '../components/ui';
 import { FuzzySearchSelect } from '../components/fuzzy-search-select';
 import { provinceToZone } from '../lib/province-zone';
@@ -451,7 +452,7 @@ function LeadsIndexComponent() {
       {/* ADD LEAD MODAL */}
       {showAddModal && (
         <ModalShell>
-          <form onSubmit={handleAddLead} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(handleAddLead)} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มลีดโรงเรียนเป้าหมายใหม่</h3>
             {leadError && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{leadError}</div>}
 
@@ -567,14 +568,13 @@ function LeadsIndexComponent() {
       {pendingStage && (
         <ModalShell>
           <form
-            onSubmit={e => {
-              e.preventDefault();
+            onSubmit={wrapFormSubmit(() => {
               const extras: Record<string, unknown> = {};
               if (pendingStage.stage === 'DocumentSent') extras.documentChannel = documentChannel;
               if (pendingStage.stage === 'Appointed') extras.appointmentKind = appointmentKind;
               if (stageRequiresEventAt(pendingStage.stage)) extras.stageEventAt = new Date(stageEventAt).toISOString();
               applyStageChange(pendingStage.lead, pendingStage.stage, extras);
-            }}
+            })}
             className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
           >
             <h3 className="text-base font-semibold text-slate-100">รายละเอียดสถานะ</h3>

@@ -23,6 +23,7 @@ import {
   Square,
   UserRound
 } from 'lucide-react';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -486,7 +487,7 @@ function AILoggerComponent() {
           </div>
 
           {parsedData ? (
-            <form onSubmit={handleSaveToCalendar} className="space-y-4">
+            <form onSubmit={wrapFormSubmit(handleSaveToCalendar)} className="space-y-4">
               {matchedLead && (
                 <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-[10.5px] text-emerald-200 flex items-start gap-2">
                   <Link2 size={13} className="shrink-0 mt-0.5" />

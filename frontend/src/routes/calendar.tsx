@@ -19,6 +19,7 @@ import { apiFetch, apiJson } from '../lib/api';
 import { dateKey, isSameLocalDay, isTodayLocal } from '../lib/datetime';
 import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
 import { ModalShell } from '../components/ui';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -328,7 +329,7 @@ function CalendarComponent() {
                   <p className="text-xs text-slate-300 mt-1">{item.content}</p>
                 </div>
               ))}
-              <form onSubmit={addComment} className="flex gap-2">
+              <form onSubmit={wrapFormSubmit(addComment)} className="flex gap-2">
                 <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="เพิ่มคอมเมนต์..." className="flex-1 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                 <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">ส่ง</button>
               </form>

@@ -4,6 +4,7 @@ import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { Download, Edit2, Package, Plus, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import { PaginationControls, ModalShell } from '../components/ui';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -375,7 +376,7 @@ function ProductsComponent() {
 
       {showModal && canManage && (
         <ModalShell>
-          <form onSubmit={handleSubmit} className="w-full max-w-xl max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(handleSubmit)} className="w-full max-w-xl max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-slate-100">{editingProduct ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h3>
               <button type="button" onClick={closeModal} className="text-slate-500 hover:text-slate-200" title="ปิด">
@@ -531,7 +532,7 @@ function ProductsComponent() {
 
       {showImportModal && canManage && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={importProducts} className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(importProducts)} className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-slate-100">Import สินค้าจาก CSV</h3>
               <button type="button" onClick={() => setShowImportModal(false)} className="text-slate-500 hover:text-slate-200" title="ปิด">
@@ -555,7 +556,7 @@ function ProductsComponent() {
 
       {showCategoryModal && canManage && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={saveCategory} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(saveCategory)} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-slate-100">จัดการหมวดหมู่สินค้า</h3>
               <button type="button" onClick={() => setShowCategoryModal(false)} className="text-slate-500 hover:text-slate-200" title="ปิด">

@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -329,7 +330,7 @@ function RequestsIndexComponent() {
 
       {forwardRequest && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={submitForward} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(submitForward)} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">ส่งต่องานไปแผนกอื่น</h3>
             <select value={forwardDepartment} onChange={e => setForwardDepartment(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none">
               {DEPARTMENTS.map(dept => <option key={dept.id} value={dept.id}>{dept.label}</option>)}

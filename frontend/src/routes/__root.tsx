@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth, User } from '../hooks/useAuth';
 import { apiFetch, apiJson, authHeaders } from '../lib/api';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { SaveConfirmProvider, wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { 
   LayoutDashboard, 
   Users, 
@@ -417,6 +418,7 @@ function RootComponent() {
   );
 
   return (
+    <SaveConfirmProvider>
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#090d16] text-slate-100 overflow-x-hidden font-sans">
       {isMobileSidebarOpen && (
         <button
@@ -646,7 +648,7 @@ function RootComponent() {
       {/* QUICK USER SWAPPER MODAL */}
       {user?.forcePasswordChange && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-          <form onSubmit={handleForcedPasswordChange} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(handleForcedPasswordChange, { message: 'ต้องการบันทึกรหัสผ่านใหม่หรือไม่?' })} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div>
               <h3 className="text-base font-semibold text-slate-100">ตั้งรหัสผ่านใหม่</h3>
               <p className="text-xs text-slate-400 mt-1">บัญชีนี้ยังใช้รหัสผ่านเริ่มต้น กรุณาเปลี่ยนรหัสผ่านก่อนใช้งานต่อ</p>
@@ -746,5 +748,6 @@ function RootComponent() {
         </div>
       )}
     </div>
+    </SaveConfirmProvider>
   );
 }

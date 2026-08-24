@@ -22,6 +22,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { ModalShell } from '../components/ui';
 import { FuzzySearchSelect } from '../components/fuzzy-search-select';
 import { provinceToZone } from '../lib/province-zone';
@@ -523,7 +524,7 @@ function LeadDetailComponent() {
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
                 <Repeat2 size={13} /> Transfer Owner
               </h3>
-              <form onSubmit={handleTransferOwner} className="space-y-2">
+              <form onSubmit={wrapFormSubmit(handleTransferOwner)} className="space-y-2">
                 <select value={transferTo} onChange={e => setTransferTo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
                   {users.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
                 </select>
@@ -545,7 +546,7 @@ function LeadDetailComponent() {
                 </div>
               ))}
               {!(lead.attachments || []).length && <div className="text-[10px] text-slate-500">ยังไม่มีไฟล์แนบ</div>}
-              <form onSubmit={handleAddAttachment} className="pt-2 space-y-2">
+              <form onSubmit={wrapFormSubmit(handleAddAttachment)} className="pt-2 space-y-2">
                 <input value={attachmentName} onChange={e => setAttachmentName(e.target.value)} placeholder="ชื่อไฟล์/เอกสาร" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
                 <input value={attachmentUrl} onChange={e => setAttachmentUrl(e.target.value)} placeholder="URL เอกสารหรือ proposal" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
                 <button type="submit" className="w-full px-3 py-2 rounded-lg bg-slate-800 text-[10px] font-semibold text-slate-200">เพิ่มไฟล์แนบ</button>
@@ -553,7 +554,7 @@ function LeadDetailComponent() {
             </div>
 
             {showAddContact && (
-              <form onSubmit={handleAddContact} className="p-3 rounded-xl border border-slate-800 bg-[#090d16]/50 space-y-2">
+              <form onSubmit={wrapFormSubmit(handleAddContact)} className="p-3 rounded-xl border border-slate-800 bg-[#090d16]/50 space-y-2">
                 <input 
                   type="text"
                   placeholder="ชื่อ-นามสกุล"
@@ -607,7 +608,7 @@ function LeadDetailComponent() {
               {lead.contacts && lead.contacts.map((contact: any, index: number) => (
                 <div key={index} className="p-3.5 rounded-xl border border-slate-800 bg-[#090d16]/30 space-y-1.5">
                   {editingContactIndex === index ? (
-                    <form onSubmit={handleSaveContactEdit} className="space-y-2">
+                    <form onSubmit={wrapFormSubmit(handleSaveContactEdit)} className="space-y-2">
                       <input value={editContactForm.name} onChange={e => setEditContactForm({ ...editContactForm, name: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" required />
                       <input value={editContactForm.position} onChange={e => setEditContactForm({ ...editContactForm, position: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" />
                       <input value={editContactForm.phone} onChange={e => setEditContactForm({ ...editContactForm, phone: e.target.value })} className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-[#090d16] text-[11px] text-slate-200" required />
@@ -648,7 +649,7 @@ function LeadDetailComponent() {
                 <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">ข้อมูลโรงเรียนและข้อมูลนำเข้า</h3>
                 <span className="text-[10px] text-slate-500">แก้ไขข้อมูลจากไฟล์ Excel หรือจากหน้าเว็บได้</span>
               </div>
-              <form onSubmit={handleSaveProfile} className="space-y-4">
+              <form onSubmit={wrapFormSubmit(handleSaveProfile)} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     อุณหภูมิ (อัตโนมัติ)
@@ -740,6 +741,7 @@ function LeadDetailComponent() {
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     นัดโทรครั้งถัดไป
                     <input type="date" value={editProfile.nextCallAt} onChange={e => handleEditProfileChange('nextCallAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    <p className="mt-1 text-[10px] text-slate-500">บันทึกแล้วจะสร้างนัดในปฏิทินกลางอัตโนมัติ (09:00–10:00)</p>
                   </label>
                 </div>
 
@@ -804,7 +806,7 @@ function LeadDetailComponent() {
                   <div className="text-[10.5px] text-slate-500">ยังไม่มี Remarks</div>
                 )}
               </div>
-              <form onSubmit={handleAddRemark} className="space-y-2 pt-2 border-t border-slate-800">
+              <form onSubmit={wrapFormSubmit(handleAddRemark)} className="space-y-2 pt-2 border-t border-slate-800">
                 <textarea
                   value={newRemarkContent}
                   onChange={e => setNewRemarkContent(e.target.value)}
@@ -822,7 +824,7 @@ function LeadDetailComponent() {
             {/* Note form */}
             <div className="p-6 rounded-2xl glass-panel">
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">เพิ่มบันทึกการประชุม/ความคืบหน้า (Notes)</h3>
-              <form onSubmit={handleAddNote} className="space-y-3">
+              <form onSubmit={wrapFormSubmit(handleAddNote)} className="space-y-3">
                 <select value={newNoteType} onChange={e => setNewNoteType(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
                   {noteTypeOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -854,7 +856,7 @@ function LeadDetailComponent() {
                 {lead.notes && lead.notes.slice().reverse().map((note: any, idx: number) => (
                   <div key={idx} className="p-3.5 rounded-xl border border-slate-800/80 bg-[#121826]/10 space-y-2">
                     {editingNoteKey === noteKey(note) ? (
-                      <form onSubmit={handleSaveNoteEdit} className="space-y-2">
+                      <form onSubmit={wrapFormSubmit(handleSaveNoteEdit)} className="space-y-2">
                         <select value={editNoteType} onChange={e => setEditNoteType(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
                           {noteTypeOptions.map(opt => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -982,7 +984,7 @@ function LeadDetailComponent() {
                 <div className="py-6 text-center text-xs text-slate-500">ยังไม่มี action item จาก coaching</div>
               )}
             </div>
-            <form onSubmit={handleCoachNote} className="flex gap-2">
+            <form onSubmit={wrapFormSubmit(handleCoachNote)} className="flex gap-2">
               <input value={coachNote} onChange={(e) => setCoachNote(e.target.value)} placeholder="บันทึก action item จาก AI Coach..." className="flex-1 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
               <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">บันทึก</button>
             </form>

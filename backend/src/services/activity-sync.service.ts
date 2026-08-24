@@ -37,8 +37,11 @@ function toIsoDay(dateStr: string) {
 }
 
 function dateOnlyRange(dateStr: string) {
-  const start = new Date(`${dateStr}T09:00:00`);
-  const end = new Date(`${dateStr}T10:00:00`);
+  const isoDay = toIsoDay(dateStr);
+  if (!isoDay) return { start: new Date(NaN), end: new Date(NaN) };
+  const [year, month, day] = isoDay.split('-').map(Number);
+  const start = new Date(year, (month || 1) - 1, day || 1, 9, 0, 0, 0);
+  const end = new Date(year, (month || 1) - 1, day || 1, 10, 0, 0, 0);
   return { start, end };
 }
 
@@ -58,9 +61,23 @@ async function upsertTask(task: Record<string, unknown>) {
   const existing = await coll.findOne({ _id: task._id } as any);
   if (existing) {
     await (coll as any).updateOne({ _id: task._id }, { $set: task });
-  } else {
-    await coll.insertOne(task as any);
+    return;
   }
+  try {
+    await coll.insertOne(task as any);
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      await (coll as any).updateOne({ _id: task._id }, { $set: task });
+      return;
+    }
+    throw error;
+  }
+}
+
+async function findNextCallSyncTask(leadId: string) {
+  const linked = await findLinkedTask(leadId, 'lead_next_call');
+  if (linked) return linked;
+  return await Tasks().findOne({ _id: `t_sync_${leadId}_nextcall` } as any);
 }
 
 async function deleteTaskById(taskId: string) {
@@ -102,7 +119,7 @@ async function updateLeadRecord(leadId: string, patch: Partial<Lead>) {
 }
 
 export async function syncLeadNextCallAt(lead: Lead, creatorId: string) {
-  const linked = await findLinkedTask(lead._id, 'lead_next_call');
+  const linked = await findNextCallSyncTask(lead._id);
   const isoDay = toIsoDay(lead.nextCallAt || '');
 
   if (!isoDay) {
@@ -125,7 +142,7 @@ export async function syncLeadNextCallAt(lead: Lead, creatorId: string) {
     _id: linked?._id || `t_sync_${lead._id}_nextcall`,
     title: `นัดโทรครั้งถัดไป: ${lead.schoolName}`,
     description: `นัดโทรครั้งถัดไปจาก Lead`,
-    type: 'FollowUp' as const,
+    type: 'Call' as const,
     status: 'Pending' as const,
     startAt: start,
     endAt: end,
@@ -383,7 +400,7 @@ export async function runActivitySyncBackfill(options: { dryRun?: boolean } = {}
     }
 
     if (nextCallAt) {
-      const existingNextCall = await findLinkedTask(lead._id, 'lead_next_call');
+      const existingNextCall = await findNextCallSyncTask(lead._id);
       const existingDay = existingNextCall ? formatDateOnly(existingNextCall.startAt) : '';
       if (!existingNextCall || existingDay !== toIsoDay(nextCallAt)) {
         if (!dryRun) await syncLeadNextCallAt(lead, creatorId);

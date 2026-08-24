@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit, requestSaveConfirm } from '../hooks/useSaveConfirm';
 import { filterLeadsBySearch } from '../lib/lead-search';
 import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue, stageRequiresEventAt, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
@@ -222,6 +223,10 @@ function PipelineComponent() {
       .catch(err => setError(err.message || 'บันทึก opportunity ไม่สำเร็จ'));
   };
 
+  const confirmSaveOpportunity = (patch: Record<string, unknown>) => {
+    requestSaveConfirm(() => saveOpportunity(patch));
+  };
+
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
       <div className="flex flex-wrap justify-between items-start gap-4">
@@ -364,7 +369,7 @@ function PipelineComponent() {
 
       {showAddModal && canManagePipeline && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleCreateOpp} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(handleCreateOpp)} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มดีลโอกาสการขายใหม่</h3>
             <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="ชื่อโครงการ" required className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             <div className="relative">
@@ -439,11 +444,11 @@ function PipelineComponent() {
 
             {selectedOpp && canManagePipeline ? (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <input defaultValue={selectedOpp.title} onBlur={e => e.target.value !== selectedOpp.title && saveOpportunity({ title: e.target.value })} className="md:col-span-2 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                <input type="number" defaultValue={selectedOpp.value} onBlur={e => saveOpportunity({ value: Number(e.target.value) || 0 })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                <input type="number" min="0" max="100" defaultValue={selectedOpp.probability ?? 20} onBlur={e => saveOpportunity({ probability: Number(e.target.value) || 0 })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                <input type="date" defaultValue={new Date(selectedOpp.closeDate).toISOString().split('T')[0]} onBlur={e => saveOpportunity({ closeDate: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                <select defaultValue={selectedOpp.assignedTo} onChange={e => saveOpportunity({ assignedTo: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                <input defaultValue={selectedOpp.title} onBlur={e => e.target.value !== selectedOpp.title && confirmSaveOpportunity({ title: e.target.value })} className="md:col-span-2 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <input type="number" defaultValue={selectedOpp.value} onBlur={e => confirmSaveOpportunity({ value: Number(e.target.value) || 0 })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <input type="number" min="0" max="100" defaultValue={selectedOpp.probability ?? 20} onBlur={e => confirmSaveOpportunity({ probability: Number(e.target.value) || 0 })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <input type="date" defaultValue={new Date(selectedOpp.closeDate).toISOString().split('T')[0]} onBlur={e => confirmSaveOpportunity({ closeDate: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <select defaultValue={selectedOpp.assignedTo} onChange={e => confirmSaveOpportunity({ assignedTo: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
                   {users.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
                 </select>
               </div>
@@ -490,7 +495,7 @@ function PipelineComponent() {
                             onChange={e => {
                               const current = selectedOpp.quoteIds || [];
                               const quoteIds = e.target.checked ? [...current, quote._id] : current.filter((id: string) => id !== quote._id);
-                              saveOpportunity({ quoteIds });
+                              confirmSaveOpportunity({ quoteIds });
                             }}
                           />
                         ) : (
@@ -517,10 +522,7 @@ function PipelineComponent() {
       {pendingStage && canManagePipeline && pendingStage.stage === 'Lost' && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <form
-            onSubmit={e => {
-              e.preventDefault();
-              updateLeadStage(pendingStage.lead, pendingStage.stage, lostReason);
-            }}
+            onSubmit={wrapFormSubmit(() => updateLeadStage(pendingStage.lead, pendingStage.stage, lostReason))}
             className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
           >
             <h3 className="text-base font-semibold text-slate-100">ระบุเหตุผลที่ Lost</h3>
@@ -536,14 +538,13 @@ function PipelineComponent() {
       {pendingStage && canManagePipeline && pendingStage.stage !== 'Lost' && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <form
-            onSubmit={e => {
-              e.preventDefault();
+            onSubmit={wrapFormSubmit(() => {
               const extras: Record<string, unknown> = {};
               if (pendingStage.stage === 'DocumentSent') extras.documentChannel = documentChannel;
               if (pendingStage.stage === 'Appointed') extras.appointmentKind = appointmentKind;
               if (stageRequiresEventAt(pendingStage.stage)) extras.stageEventAt = new Date(stageEventAt).toISOString();
               updateLeadStage(pendingStage.lead, pendingStage.stage, undefined, extras);
-            }}
+            })}
             className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
           >
             <h3 className="text-base font-semibold text-slate-100">รายละเอียดสถานะ</h3>

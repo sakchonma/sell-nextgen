@@ -13,6 +13,7 @@ import {
   Send,
 } from 'lucide-react';
 import { apiFetch, apiJson, authHeaders } from '../lib/api';
+import { requestSaveConfirm } from '../hooks/useSaveConfirm';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -413,10 +414,10 @@ function RequestCreateComponent() {
             <div className={`p-3 rounded-lg border text-[11px] ${isAutoApproved ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
               {isAutoApproved ? 'หลังส่ง ระบบจะอนุมัติทันทีและส่งให้ผู้บริหารคนอื่นรับทราบ' : 'หลังส่ง คำขอจะอยู่ในคิวรอ Manager/Exec อนุมัติ'}
             </div>
-            <button disabled={submitting} onClick={() => submitRequest(false)} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg disabled:opacity-50">
+            <button disabled={submitting} onClick={() => requestSaveConfirm(() => submitRequest(false))} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg disabled:opacity-50">
               {submitting ? 'กำลังส่งคำขอ...' : <><Send size={14} /> ส่งคำขอ</>}
             </button>
-            <button disabled={submitting} onClick={() => submitRequest(true)} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:text-slate-100 disabled:opacity-50">
+            <button disabled={submitting} onClick={() => requestSaveConfirm(() => submitRequest(true))} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:text-slate-100 disabled:opacity-50">
               บันทึกแบบร่าง
             </button>
             <button onClick={() => setStep(2)} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200">

@@ -27,6 +27,7 @@ import { defaultEventSchedule, eventScheduleFromRange, isSameLocalDay, resolveEv
 import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType, typeAllowsCustomLabel } from '../lib/task-types';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 
 function participantStatusLabel(status: string) {
   switch (status) {
@@ -526,7 +527,7 @@ function TasksComponent() {
       {/* CREATE TASK MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-6">
-          <form onSubmit={handleCreateTask} className="w-full max-w-lg max-h-[calc(100dvh-7rem)] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(handleCreateTask)} className="w-full max-w-lg max-h-[calc(100dvh-7rem)] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">{editingTask ? 'แก้ไขงานหรือนัดหมาย' : 'สร้างงานหรือการนัดหมายใหม่'}</h3>
             {formError && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{formError}</div>
@@ -767,7 +768,7 @@ function TasksComponent() {
                   <div className="py-6 text-center text-xs text-slate-500">ยังไม่มีคอมเมนต์</div>
                 )}
               </div>
-              <form onSubmit={handleAddComment} className="flex gap-2">
+              <form onSubmit={wrapFormSubmit(handleAddComment)} className="flex gap-2">
                 <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="เพิ่มคอมเมนต์..." className="flex-1 px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                 <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">ส่ง</button>
               </form>

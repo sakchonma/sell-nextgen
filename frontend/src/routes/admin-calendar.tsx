@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { dateKey } from '../lib/datetime';
 import { getUserColor } from '../lib/user-colors';
 import { ModalShell } from '../components/ui';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import {
   CalendarDays,
   CheckCircle2,
@@ -537,7 +538,7 @@ function AdminCalendarComponent() {
 
       {selectedEvent && (
         <ModalShell className="bg-black/70">
-          <form onSubmit={saveEvent} className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
+          <form onSubmit={wrapFormSubmit(saveEvent)} className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className={`inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase ${sourceStyle(selectedEvent.source)}`}>
@@ -613,7 +614,7 @@ function AdminCalendarComponent() {
 
       {showCreate && (
         <ModalShell className="bg-amber-950/25 backdrop-blur-sm">
-          <form onSubmit={createEvent} className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-amber-200 bg-[#fffaf0] p-5 shadow-xl shadow-amber-950/10 space-y-4">
+          <form onSubmit={wrapFormSubmit(createEvent)} className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-amber-200 bg-[#fffaf0] p-5 shadow-xl shadow-amber-950/10 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className="inline-flex px-2 py-0.5 rounded border text-[9px] font-black uppercase border-emerald-500/20 bg-emerald-500/10 text-emerald-300">Admin</span>

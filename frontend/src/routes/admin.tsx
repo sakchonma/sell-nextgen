@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Users, ShieldAlert, Settings, PlusCircle, Edit, Trash2, KeyRound } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 
 const PERMISSION_LABELS: Record<string, string> = {
   viewDashboard: 'Dashboard',
@@ -339,7 +340,7 @@ function AdminComponent() {
       {/* User Modal */}
       {showUserModal && (
         <Modal title={editingUser ? 'แก้ไขผู้ใช้' : 'สร้างผู้ใช้'} onClose={() => setShowUserModal(false)}>
-          <form onSubmit={handleUserSubmit} className="space-y-4">
+          <form onSubmit={wrapFormSubmit(handleUserSubmit)} className="space-y-4">
             <div>
               <label className="block text-xs text-slate-400 mb-1">ชื่อ</label>
               <input name="name" defaultValue={editingUser?.name} required className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-200" />
@@ -404,7 +405,7 @@ function AdminComponent() {
       {/* Password Modal */}
       {passwordUser && canManagePasswords && (
         <Modal title={`แก้ไขรหัสผ่าน: ${passwordUser.name}`} onClose={() => setPasswordUser(null)}>
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <form onSubmit={wrapFormSubmit(handlePasswordSubmit)} className="space-y-4">
             <div className="p-3 rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-xs text-indigo-200">
               การแก้ไขรหัสผ่านทำได้เฉพาะบัญชี root@nextgen.co.th เท่านั้น
             </div>
@@ -432,7 +433,7 @@ function AdminComponent() {
       {/* Role Modal */}
       {showRoleModal && (
         <Modal title={editingRole ? 'แก้ไขบทบาท' : 'สร้างบทบาท'} onClose={() => setShowRoleModal(false)}>
-          <form onSubmit={handleRoleSubmit} className="space-y-4">
+          <form onSubmit={wrapFormSubmit(handleRoleSubmit)} className="space-y-4">
             <div>
               <label className="block text-xs text-slate-400 mb-1">ชื่อบทบาท</label>
               <input name="name" defaultValue={editingRole?.name} required className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-200" />

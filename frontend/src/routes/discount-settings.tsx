@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { Percent, Save, Sliders, Trash2, UserPlus } from 'lucide-react';
+import { requestSaveConfirm } from '../hooks/useSaveConfirm';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -133,7 +134,7 @@ function DiscountSettingsComponent() {
         </div>
         {canManage && (
           <button
-            onClick={saveSettings}
+            onClick={() => requestSaveConfirm(saveSettings)}
             className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
           >
             <Save size={14} /> บันทึกการตั้งค่า

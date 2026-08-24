@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { AlertTriangle, ArrowLeft, Calculator, CheckCircle2, FileText, Plus, Search, Trash2, X } from 'lucide-react';
 import { calculateQuoteTotals, formatMoney, getUserDiscountLimit } from '../lib/quoteMath';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { filterLeadsBySearch } from '../lib/lead-search';
 import { NumericInput } from '../components/numeric-input';
 
@@ -296,7 +297,7 @@ function QuoteBuilderComponent() {
       {message && <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2"><CheckCircle2 size={14} /> {message}</div>}
       {error && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{error}</div>}
 
-      <form onSubmit={submitQuote} className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
+      <form onSubmit={wrapFormSubmit(submitQuote)} className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-800 bg-[#121826]/40 p-4 space-y-4">
             <div className="relative">

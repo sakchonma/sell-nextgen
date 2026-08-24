@@ -4,6 +4,7 @@ import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { Activity, Bell, Clock, Phone, Mail, Users, RefreshCw } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 
 export const Route = createRoute({
@@ -134,7 +135,7 @@ function ActivitiesComponent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 p-6 rounded-2xl glass-panel space-y-4">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">บันทึกกิจกรรมด่วน</h3>
-          <form onSubmit={handleLog} className="space-y-3">
+          <form onSubmit={wrapFormSubmit(handleLog)} className="space-y-3">
             <div className="relative">
               <label className="block text-[10px] text-slate-500 font-semibold mb-1">โรงเรียน</label>
               <input

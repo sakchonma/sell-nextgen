@@ -4,6 +4,7 @@ import { Route as RootRoute } from './__root';
 import { useAuth } from '../hooks/useAuth';
 import { invalidateActivityTypesCache, useActivityTypes } from '../hooks/useActivityTypes';
 import { apiFetch } from '../lib/api';
+import { wrapFormSubmit, requestSaveConfirm } from '../hooks/useSaveConfirm';
 import { ListTree, Plus, Save, Trash2 } from 'lucide-react';
 
 export const Route = createRoute({
@@ -146,7 +147,7 @@ function ActivityTypesPage() {
       {message && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">{message}</div>}
       {(error || formError) && <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">{formError || error}</div>}
 
-      <form onSubmit={createType} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-4">
+      <form onSubmit={wrapFormSubmit(createType)} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-4">
         <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Plus size={16} /> เพิ่มประเภทใหม่</h2>
         <div className="grid md:grid-cols-2 gap-3">
           <label className="space-y-1 text-xs text-slate-400">
@@ -283,7 +284,7 @@ function ActivityTypesPage() {
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-2">
                     {editingId === row._id ? (
-                      <button type="button" onClick={() => saveEdit(row._id)} className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-xs text-white">
+                      <button type="button" onClick={() => requestSaveConfirm(() => saveEdit(row._id))} className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-xs text-white">
                         <Save size={14} /> บันทึก
                       </button>
                     ) : (
