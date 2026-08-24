@@ -431,3 +431,90 @@ export async function runActivitySyncBackfill(options: { dryRun?: boolean } = {}
 
   return stats;
 }
+
+export type NextCallCalendarBackfillStats = {
+  leadsScanned: number;
+  withNextCall: number;
+  invalidDates: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  dryRun: boolean;
+  force: boolean;
+  samples: Array<{ leadId: string; schoolName: string; nextCallAt: string; action: 'create' | 'update' | 'skip' | 'invalid' }>;
+};
+
+export async function runNextCallCalendarBackfill(options: { dryRun?: boolean; force?: boolean } = {}): Promise<NextCallCalendarBackfillStats> {
+  const dryRun = options.dryRun ?? false;
+  const force = options.force ?? false;
+  const stats: NextCallCalendarBackfillStats = {
+    leadsScanned: 0,
+    withNextCall: 0,
+    invalidDates: 0,
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    dryRun,
+    force,
+    samples: [],
+  };
+
+  const [leads, users] = await Promise.all([
+    findAll<Lead>(Leads()),
+    findAll<any>(Users()),
+  ]);
+
+  const fallbackUserId = users.find((u: any) => u.rank === 3)?._id
+    || users.find((u: any) => u.rank >= 4)?._id
+    || users[0]?._id
+    || 'backfill_system';
+
+  for (const lead of leads) {
+    stats.leadsScanned += 1;
+    const raw = String(lead.nextCallAt || '').trim();
+    if (!raw) continue;
+
+    stats.withNextCall += 1;
+    const isoDay = toIsoDay(raw);
+    if (!isoDay) {
+      stats.invalidDates += 1;
+      if (stats.samples.length < 50) {
+        stats.samples.push({
+          leadId: lead._id,
+          schoolName: lead.schoolName,
+          nextCallAt: raw,
+          action: 'invalid',
+        });
+      }
+      continue;
+    }
+
+    const existing = await findNextCallSyncTask(lead._id);
+    const existingDay = existing ? formatDateOnly(existing.startAt) : '';
+    const needsWrite = force || !existing || existingDay !== isoDay;
+    const action: 'create' | 'update' | 'skip' = !existing ? 'create' : needsWrite ? 'update' : 'skip';
+
+    if (action === 'skip') {
+      stats.unchanged += 1;
+    } else if (action === 'create') {
+      stats.created += 1;
+    } else {
+      stats.updated += 1;
+    }
+
+    if (needsWrite && !dryRun) {
+      await syncLeadNextCallAt(lead, lead.assignedTo || fallbackUserId);
+    }
+
+    if (stats.samples.length < 50) {
+      stats.samples.push({
+        leadId: lead._id,
+        schoolName: lead.schoolName,
+        nextCallAt: isoDay,
+        action,
+      });
+    }
+  }
+
+  return stats;
+}

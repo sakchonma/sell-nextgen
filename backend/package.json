@@ -14,6 +14,7 @@
     "seed": "tsx src/config/seed-runner.ts",
     "seed:prod": "NODE_ENV=production tsx src/config/seed-runner.ts",
     "backfill:activity-sync": "ALLOW_MEMORY_DB=false tsx src/scripts/backfill-activity-sync.ts",
+    "backfill:next-call-calendar": "ALLOW_MEMORY_DB=false tsx src/scripts/backfill-next-call-calendar.ts",
     "import:schools": "ALLOW_MEMORY_DB=false tsx src/scripts/import-schools-xlsx.ts"
   },
   "dependencies": {
