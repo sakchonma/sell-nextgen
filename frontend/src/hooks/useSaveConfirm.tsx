@@ -69,7 +69,7 @@ export function SaveConfirmProvider({ children }: { children: ReactNode }) {
       {children}
       {open && pending && (
         <ModalShell>
-          <div className="mx-auto w-[min(20rem,calc(100vw-2rem))] shrink-0 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4">
+          <div className="w-96 max-w-[calc(100vw-2rem)] shrink-0 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">{pending.title}</h3>
             <p className="text-sm text-slate-400">{pending.message}</p>
             <div className="flex gap-3 justify-end pt-1">
