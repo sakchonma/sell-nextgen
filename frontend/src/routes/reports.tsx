@@ -407,105 +407,6 @@ function ReportsComponent() {
             </button>
           ))}
         </div>
-        <div className="mt-3">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <label className="block text-[10px] font-bold text-slate-500">ประเภทกิจกรรม</label>
-            <span className="text-[10px] text-slate-500">ทั้งหมด {activityTypeOptions.length} ประเภท</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              aria-pressed={activityType === 'all'}
-              onClick={() => { setActivityType('all'); setActivityPage(1); }}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
-                activityType === 'all'
-                  ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'border-slate-800 text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              ทั้งหมด{activityTypeTotal ? ` (${activityTypeTotal})` : ''}
-            </button>
-            {activityTypeOptions.map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                aria-pressed={activityType === opt.value}
-                onClick={() => { setActivityType(opt.value); setActivityPage(1); }}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
-                  activityType === opt.value
-                    ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'border-slate-800 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                {opt.label}{activityTypeCounts[opt.value] ? ` (${activityTypeCounts[opt.value]})` : ''}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[10px] text-slate-500">Report scope: {reportSummary?.scope === 'team' ? 'ทีม/องค์กรตามสิทธิ์' : 'ข้อมูลส่วนตัวตามสิทธิ์'}</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={exportCsv} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
-              <Download size={14} /> Export CSV
-            </button>
-            <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
-              <Printer size={14} /> Print / PDF
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-wide text-slate-400">
-              กิจกรรม{activityType === 'all' ? '' : ` · ${formatTaskType(activityType, undefined, activityTypes)}`} ({loading ? '...' : sortedActivities.length})
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-1">รายการเปลี่ยนตามประเภทที่เลือกด้านบน</p>
-          </div>
-          <div className="relative max-w-xs w-full">
-            <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
-            <input
-              type="search"
-              value={activitySearch}
-              onChange={e => setActivitySearch(e.target.value)}
-              placeholder="ค้นหากิจกรรม..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200"
-            />
-          </div>
-        </div>
-        <div className="divide-y divide-slate-800 min-h-[200px]">
-          {pagedActivities.map((activity: any) => (
-            <div key={activity._id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="inline-block px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel, activityTypes)}</span>
-                <h4 className="mt-2 text-sm font-semibold text-slate-200">{activity.title}</h4>
-                <p className="text-xs text-slate-500 line-clamp-1 mt-1">{activity.description || leadById(activity.leadId)?.schoolName || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
-              </div>
-              <span className="text-xs text-slate-500 shrink-0">
-                {new Date(activity.startAt || activity.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            </div>
-          ))}
-          {!loading && sortedActivities.length === 0 && (
-            <div className="py-12 text-center text-slate-500 text-sm">ไม่มีกิจกรรมประเภทนี้ในช่วงที่เลือก</div>
-          )}
-        </div>
-        {!loading && sortedActivities.length > 0 && (
-          <div className="pt-2 border-t border-slate-800">
-            <div className="text-sm text-slate-400 mb-3">
-              แสดง {pagedActivities.length} จาก {sortedActivities.length} รายการ · หน้าละ {ACTIVITY_PAGE_SIZE} รายการ
-            </div>
-            <div className="text-sm [&_button]:text-sm [&_button]:px-4 [&_button]:py-2.5 [&_span]:text-sm">
-              <PaginationControls
-                page={activityPage}
-                total={sortedActivities.length}
-                limit={ACTIVITY_PAGE_SIZE}
-                onPageChange={setActivityPage}
-              />
-            </div>
-          </div>
-        )}
       </section>
 
       <section className={`p-6 rounded-2xl glass-panel space-y-5 ${loading ? 'opacity-60' : ''}`}>
@@ -808,6 +709,106 @@ function ReportsComponent() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className={`p-6 rounded-2xl glass-panel space-y-4 ${loading ? 'opacity-60' : ''}`}>
+        <div>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <label className="block text-[10px] font-bold text-slate-500">ประเภทกิจกรรม</label>
+            <span className="text-[10px] text-slate-500">ทั้งหมด {activityTypeOptions.length} ประเภท</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={activityType === 'all'}
+              onClick={() => { setActivityType('all'); setActivityPage(1); }}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                activityType === 'all'
+                  ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'border-slate-800 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              ทั้งหมด{activityTypeTotal ? ` (${activityTypeTotal})` : ''}
+            </button>
+            {activityTypeOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={activityType === opt.value}
+                onClick={() => { setActivityType(opt.value); setActivityPage(1); }}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                  activityType === opt.value
+                    ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'border-slate-800 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                {opt.label}{activityTypeCounts[opt.value] ? ` (${activityTypeCounts[opt.value]})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[10px] text-slate-500">Report scope: {reportSummary?.scope === 'team' ? 'ทีม/องค์กรตามสิทธิ์' : 'ข้อมูลส่วนตัวตามสิทธิ์'}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={exportCsv} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+              <Download size={14} /> Export CSV
+            </button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+              <Printer size={14} /> Print / PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-800 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wide text-slate-400">
+              กิจกรรม{activityType === 'all' ? '' : ` · ${formatTaskType(activityType, undefined, activityTypes)}`} ({loading ? '...' : sortedActivities.length})
+            </h3>
+            <p className="text-[11px] text-slate-500 mt-1">รายการเปลี่ยนตามประเภทที่เลือกด้านบน</p>
+          </div>
+          <div className="relative max-w-xs w-full">
+            <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+            <input
+              type="search"
+              value={activitySearch}
+              onChange={e => setActivitySearch(e.target.value)}
+              placeholder="ค้นหากิจกรรม..."
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-sm text-slate-200"
+            />
+          </div>
+        </div>
+        <div className="divide-y divide-slate-800 min-h-[200px]">
+          {pagedActivities.map((activity: any) => (
+            <div key={activity._id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="inline-block px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel, activityTypes)}</span>
+                <h4 className="mt-2 text-sm font-semibold text-slate-200">{activity.title}</h4>
+                <p className="text-xs text-slate-500 line-clamp-1 mt-1">{activity.description || leadById(activity.leadId)?.schoolName || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+              </div>
+              <span className="text-xs text-slate-500 shrink-0">
+                {new Date(activity.startAt || activity.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            </div>
+          ))}
+          {!loading && sortedActivities.length === 0 && (
+            <div className="py-12 text-center text-slate-500 text-sm">ไม่มีกิจกรรมประเภทนี้ในช่วงที่เลือก</div>
+          )}
+        </div>
+        {!loading && sortedActivities.length > 0 && (
+          <div className="pt-2 border-t border-slate-800">
+            <div className="text-sm text-slate-400 mb-3">
+              แสดง {pagedActivities.length} จาก {sortedActivities.length} รายการ · หน้าละ {ACTIVITY_PAGE_SIZE} รายการ
+            </div>
+            <div className="text-sm [&_button]:text-sm [&_button]:px-4 [&_button]:py-2.5 [&_span]:text-sm">
+              <PaginationControls
+                page={activityPage}
+                total={sortedActivities.length}
+                limit={ACTIVITY_PAGE_SIZE}
+                onPageChange={setActivityPage}
+              />
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
