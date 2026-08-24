@@ -448,8 +448,8 @@ function TasksComponent() {
                     <div className="space-y-2">
                       {items.map(task => (
                         <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-2 rounded-lg border text-left ${typeColor(task)}`}>
-                          <div className="text-[9px] text-slate-500">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
-                          <div className="text-[10px] font-semibold text-slate-200 line-clamp-2">{task.title}</div>
+                          <div className="text-[9px] text-white/90">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+                          <div className="text-[10px] font-semibold text-white line-clamp-2">{task.title}</div>
                         </button>
                       ))}
                     </div>
@@ -462,9 +462,9 @@ function TasksComponent() {
             <div className="py-2 space-y-3">
               {dayTasks.map(task => (
                 <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-4 rounded-xl border text-left ${typeColor(task)}`}>
-                  <div className="text-[10px] text-slate-500">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.endAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
-                  <h4 className="text-sm font-bold text-slate-200 mt-1">{task.title}</h4>
-                  <p className="text-xs text-slate-400 mt-1">{task.description || 'ไม่มีรายละเอียด'}</p>
+                  <div className="text-[10px] text-white/90">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.endAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <h4 className="text-sm font-bold text-white mt-1">{task.title}</h4>
+                  <p className="text-xs text-white/90 mt-1">{task.description || 'ไม่มีรายละเอียด'}</p>
                 </button>
               ))}
               {dayTasks.length === 0 && <div className="py-12 text-center text-xs text-slate-500">วันนี้ยังไม่มีงาน</div>}

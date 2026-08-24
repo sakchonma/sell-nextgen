@@ -123,6 +123,7 @@ function AdminCalendarComponent() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [ownerFilter, setOwnerFilter] = useState('All');
   const [selectedEvent, setSelectedEvent] = useState<AdminCalendarEvent | null>(null);
+  const [dayListDate, setDayListDate] = useState<Date | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({
     title: '',
@@ -513,19 +514,25 @@ function AdminCalendarComponent() {
                       <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${sourceStyle(event.source)}`}>
                         {SOURCE_LABELS[event.source]}
                       </span>
-                      <span className="text-[9px] text-slate-500 flex items-center gap-1">
+                      <span className="text-[9px] text-white/90 flex items-center gap-1">
                         <Clock size={9} /> {timeValue(event.startAt)}
                       </span>
                     </div>
-                    <span className="block mt-1.5 text-[10px] font-bold text-slate-200 line-clamp-2">{event.title}</span>
+                    <span className="block mt-1.5 text-[10px] font-bold text-white line-clamp-2">{event.title}</span>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="truncate text-[9px] text-slate-500">{departmentLabel(event.department)}</span>
+                      <span className="truncate text-[9px] text-white/80">{departmentLabel(event.department)}</span>
                       <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[8px] font-bold ${statusStyle(event.status)}`}>{event.status}</span>
                     </div>
                   </button>
                 ))}
                 {dayEvents.length > 4 && (
-                  <span className="block text-right text-[9px] text-slate-500 font-semibold">+ อีก {dayEvents.length - 4} รายการ</span>
+                  <button
+                    type="button"
+                    onClick={() => setDayListDate(day)}
+                    className="block w-full text-right text-[9px] font-semibold text-indigo-300 hover:text-indigo-200 hover:underline"
+                  >
+                    + อีก {dayEvents.length - 4} รายการ
+                  </button>
                 )}
                 {dayEvents.length === 0 && (
                   <div className="pt-8 text-center text-[10px] text-slate-600">ไม่มีแผนงาน</div>
@@ -535,6 +542,47 @@ function AdminCalendarComponent() {
           );
         })}
       </div>
+
+      {dayListDate && (
+        <ModalShell className="bg-black/70">
+          <div className="w-full max-w-lg max-h-[calc(100dvh-var(--app-modal-top)-2rem)] overflow-y-auto rounded-xl border border-slate-800 bg-[#0f1625] p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-100">
+                  {dayListDate.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">{getEventsForDay(dayListDate).length} รายการในวันนี้</p>
+              </div>
+              <button type="button" onClick={() => setDayListDate(null)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200" title="ปิด">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {[...getEventsForDay(dayListDate)]
+                .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+                .map(event => (
+                  <button
+                    key={`${event.source}-${event.id}`}
+                    type="button"
+                    onClick={() => {
+                      openEdit(event);
+                      setDayListDate(null);
+                    }}
+                    className={`w-full text-left rounded-lg border p-2 ${eventUserColor(event)}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${sourceStyle(event.source)}`}>
+                        {SOURCE_LABELS[event.source]}
+                      </span>
+                      <span className="text-[9px] text-white/90">{timeValue(event.startAt)}</span>
+                    </div>
+                    <span className="block mt-1.5 text-[10px] font-bold text-white">{event.title}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </ModalShell>
+      )}
 
       {selectedEvent && (
         <ModalShell className="bg-black/70">
