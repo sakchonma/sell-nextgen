@@ -23,6 +23,8 @@ import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
 import { ModalShell } from '../components/ui';
+import { FuzzySearchSelect } from '../components/fuzzy-search-select';
+import { provinceToZone } from '../lib/province-zone';
 import {
   APPOINTMENT_KIND_OPTIONS,
   DOCUMENT_CHANNEL_OPTIONS,
@@ -107,6 +109,7 @@ function LeadDetailComponent() {
   const [showAddContact, setShowAddContact] = useState(false);
   const [showSaveOk, setShowSaveOk] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [locationOptions, setLocationOptions] = useState<{ districts: string[]; provinces: string[] }>({ districts: [], provinces: [] });
 
   const fetchLeadDetail = () => {
     apiFetch(`/api/leads/${leadId}`)
@@ -152,6 +155,12 @@ function LeadDetailComponent() {
     fetchLeadDetail();
     fetchActivity();
     apiFetch('/api/users').then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
+    apiFetch('/api/leads/locations')
+      .then(data => setLocationOptions({
+        districts: Array.isArray(data?.districts) ? data.districts : [],
+        provinces: Array.isArray(data?.provinces) ? data.provinces : []
+      }))
+      .catch(() => setLocationOptions({ districts: [], provinces: [] }));
   }, [leadId]);
 
   const handleAddContact = (e: React.FormEvent) => {
@@ -199,6 +208,7 @@ function LeadDetailComponent() {
       ...prev,
       [field]: value,
       ...(field === 'stage' ? { status: temperatureFromStage(value) } : {}),
+      ...(field === 'province' && value.trim() ? { zone: provinceToZone(value) } : {}),
     }));
   };
 
@@ -674,11 +684,27 @@ function LeadDetailComponent() {
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     เขต/อำเภอ
-                    <input value={editProfile.district} onChange={e => handleEditProfileChange('district', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    <div className="mt-1.5">
+                      <FuzzySearchSelect
+                        value={editProfile.district}
+                        onChange={value => handleEditProfileChange('district', value)}
+                        options={locationOptions.districts}
+                        placeholder="เช่น อำเภอคลองหลวง"
+                        inputClassName="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     จังหวัด
-                    <input value={editProfile.province} onChange={e => handleEditProfileChange('province', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                    <div className="mt-1.5">
+                      <FuzzySearchSelect
+                        value={editProfile.province}
+                        onChange={value => handleEditProfileChange('province', value)}
+                        options={locationOptions.provinces}
+                        placeholder="เช่น ปทุมธานี"
+                        inputClassName="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
                   </label>
                   <label className="block md:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     ที่อยู่รวม

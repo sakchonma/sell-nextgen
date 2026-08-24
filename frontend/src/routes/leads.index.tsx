@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 import { ModalShell } from '../components/ui';
+import { FuzzySearchSelect } from '../components/fuzzy-search-select';
+import { provinceToZone } from '../lib/province-zone';
 import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle, stageRequiresEventAt, temperatureFromStage, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
 const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
@@ -38,7 +40,8 @@ function LeadsIndexComponent() {
   const [maxScore, setMaxScore] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newLeadName, setNewLeadName] = useState('');
-  const [newLeadAddress, setNewLeadAddress] = useState('');
+  const [newLeadDistrict, setNewLeadDistrict] = useState('');
+  const [newLeadProvince, setNewLeadProvince] = useState('');
   const [newLeadZone, setNewLeadZone] = useState('ภาคเหนือ');
   const [newLeadStage, setNewLeadStage] = useState('TargetSchool');
   const [pendingStage, setPendingStage] = useState<{ lead: any; stage: string } | null>(null);
@@ -53,6 +56,7 @@ function LeadsIndexComponent() {
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [hasMoreLeads, setHasMoreLeads] = useState(true);
   const [totalLeads, setTotalLeads] = useState(0);
+  const [locationOptions, setLocationOptions] = useState<{ districts: string[]; provinces: string[] }>({ districts: [], provinces: [] });
   const observerRef = useRef<IntersectionObserver | null>(null);
   const requestSeqRef = useRef(0);
   const loadingLeadsRef = useRef(false);
@@ -121,6 +125,15 @@ function LeadsIndexComponent() {
   }, [user]);
 
   useEffect(() => {
+    apiFetch('/api/leads/locations')
+      .then(data => setLocationOptions({
+        districts: Array.isArray(data?.districts) ? data.districts : [],
+        provinces: Array.isArray(data?.provinces) ? data.provinces : []
+      }))
+      .catch(() => setLocationOptions({ districts: [], provinces: [] }));
+  }, [user]);
+
+  useEffect(() => {
     fetchLeads('reset');
   }, [fetchLeads]);
 
@@ -130,7 +143,9 @@ function LeadsIndexComponent() {
     setLeadMessage('');
     apiJson('/api/leads', {
       schoolName: newLeadName,
-      address: newLeadAddress,
+      district: newLeadDistrict.trim() || undefined,
+      province: newLeadProvince.trim() || undefined,
+      address: [newLeadDistrict.trim(), newLeadProvince.trim()].filter(Boolean).join(' '),
       zone: newLeadZone,
       status: 'Cold',
       stage: newLeadStage,
@@ -141,10 +156,17 @@ function LeadsIndexComponent() {
       .then(() => {
         setShowAddModal(false);
         setNewLeadName('');
-        setNewLeadAddress('');
+        setNewLeadDistrict('');
+        setNewLeadProvince('');
         setNewLeadStage('TargetSchool');
         setNewLeadCampaign('');
         fetchLeads('reset');
+        apiFetch('/api/leads/locations')
+          .then(data => setLocationOptions({
+            districts: Array.isArray(data?.districts) ? data.districts : [],
+            provinces: Array.isArray(data?.provinces) ? data.provinces : []
+          }))
+          .catch(() => undefined);
       })
       .catch(err => setLeadError(err.message || 'เพิ่มลีดไม่สำเร็จ'));
   };
@@ -437,16 +459,30 @@ function LeadsIndexComponent() {
               />
             </div>
 
-            <div>
-              <label className="block text-xs text-slate-400 font-semibold mb-1">ที่ตั้ง/จังหวัด</label>
-              <input 
-                type="text"
-                value={newLeadAddress}
-                onChange={(e) => setNewLeadAddress(e.target.value)}
-                placeholder="อ.เมือง จ.เชียงใหม่"
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                required
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">เขต/อำเภอ</label>
+                <FuzzySearchSelect
+                  value={newLeadDistrict}
+                  onChange={setNewLeadDistrict}
+                  options={locationOptions.districts}
+                  placeholder="เช่น อำเภอคลองหลวง"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">จังหวัด</label>
+                <FuzzySearchSelect
+                  value={newLeadProvince}
+                  onChange={(next) => {
+                    setNewLeadProvince(next);
+                    if (next.trim()) setNewLeadZone(provinceToZone(next));
+                  }}
+                  options={locationOptions.provinces}
+                  placeholder="เช่น ปทุมธานี"
+                  required
+                />
+              </div>
             </div>
 
             <div>

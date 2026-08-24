@@ -61,6 +61,7 @@ import {
   collapseImportDrafts,
   leadIdentityKey,
   parseImportBuffer,
+  provinceToZone,
 } from './lib/lead-import.js';
 import type { ActivityTypeScope } from './types/index.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
@@ -1758,6 +1759,14 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
 
   const activityTypeRaw = typeof req.query.activityType === 'string' ? req.query.activityType : 'all';
   const activityType = activityTypeRaw !== 'all' ? activityTypeRaw : null;
+  const activityTypeMatches = (type: string | undefined) => {
+    if (!activityType) return true;
+    const value = String(type || '');
+    if (value === activityType) return true;
+    if (activityType === 'Demo' && (value === 'Demo' || value === 'DemoWorkshop')) return true;
+    if (activityType === 'DemoWorkshop' && (value === 'Demo' || value === 'DemoWorkshop')) return true;
+    return false;
+  };
 
   const [leadsRaw, oppsRaw, quotesRaw, requestsRaw, tasksRaw, users] = await Promise.all([
     findAll<any>(Leads()),
@@ -1787,9 +1796,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     (task.participants || []).some((participant: any) => participant.userId === currentUser._id)
   );
   const tasksByDate = tasksVisible.filter((task: any) => inRangeByDate(task.startAt || task.createdAt));
-  const tasks = activityType
-    ? tasksByDate.filter((task: any) => task.type === activityType)
-    : tasksByDate;
+  const tasks = tasksByDate.filter((task: any) => activityTypeMatches(task.type));
 
   const mapOverdueTask = (task: any) => ({
     id: task._id,
@@ -1803,11 +1810,13 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
   });
 
   const overdueNowTasks = tasksVisible.filter((task: any) =>
-    task.status !== 'Completed' && asDate(task.endAt).getTime() < Date.now()
+    task.status !== 'Completed' &&
+    asDate(task.endAt).getTime() < Date.now() &&
+    activityTypeMatches(task.type)
   );
   const overdueInRangeTasks = hasDateFilter
     ? tasksVisible.filter((task: any) =>
-        task.status !== 'Completed' && inRangeByDate(task.endAt)
+        task.status !== 'Completed' && inRangeByDate(task.endAt) && activityTypeMatches(task.type)
       )
     : [];
 
@@ -1819,18 +1828,44 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
   const hotLeadsInRange = leads.filter((lead: any) => lead.status === 'Hot');
   const approvedValueInRange = approvedQuotes.reduce((sum: number, quote: any) => sum + Number(quote.totalAmount || 0), 0);
 
-  const activities = [...tasks]
-    .sort((a, b) => asDate(b.startAt || b.createdAt).getTime() - asDate(a.startAt || a.createdAt).getTime())
-    .map((task: any) => ({
-      _id: task._id,
-      title: task.title,
-      type: task.type,
-      typeLabel: task.typeLabel,
-      description: task.description,
-      leadId: task.leadId,
-      startAt: task.startAt,
-      createdAt: task.createdAt
-    }));
+  const linkedNoteKeys = new Set(
+    tasksVisible
+      .filter((task: any) => task.sourceRef?.type === 'lead_note' && task.sourceRef?.noteKey)
+      .map((task: any) => `${task.leadId}|${task.sourceRef.noteKey}`)
+  );
+  const noteActivities = visibleLeads.flatMap((lead: any) =>
+    (lead.notes || [])
+      .filter((note: any) => inRangeByDate(note.createdAt) && !linkedNoteKeys.has(`${lead._id}|${leadNoteKey(note)}`))
+      .map((note: any) => ({
+        _id: `note_${lead._id}_${leadNoteKey(note)}`,
+        title: `${note.type || 'General'}: ${lead.schoolName}`,
+        type: note.type || 'General',
+        typeLabel: note.typeLabel,
+        description: note.content,
+        leadId: lead._id,
+        startAt: note.createdAt,
+        createdAt: note.createdAt
+      }))
+  );
+  const taskActivities = tasksByDate.map((task: any) => ({
+    _id: task._id,
+    title: task.title,
+    type: task.type,
+    typeLabel: task.typeLabel,
+    description: task.description,
+    leadId: task.leadId,
+    startAt: task.startAt,
+    createdAt: task.createdAt
+  }));
+  const activitiesInRange = [...taskActivities, ...noteActivities];
+  const activityTypeCounts = activitiesInRange.reduce((acc: Record<string, number>, item: any) => {
+    const key = String(item.type || 'Other');
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const activities = activitiesInRange
+    .filter((item: any) => activityTypeMatches(item.type))
+    .sort((a, b) => asDate(b.startAt || b.createdAt).getTime() - asDate(a.startAt || a.createdAt).getTime());
 
   const salesPerformance = users
     .filter((user: any) => user.rank === 3 || user.rank >= 4)
@@ -1907,7 +1942,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     normalizedFunnelOpportunities as any[],
     funnelQuotes
   );
-  const activityBreakdown = buildActivityBreakdown(tasksByDate, quotes, normalizedOpportunities as any[]);
+  const activityBreakdown = buildActivityBreakdown(tasks, quotes, normalizedOpportunities as any[]);
 
   const funnelWonOpps = funnelOpportunities.filter(
     (opp: any) => normalizeOpportunityStage(opp.stage) === 'Won'
@@ -1928,6 +1963,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     dateFrom: req.query.dateFrom || null,
     dateTo: req.query.dateTo || null,
     activityType: activityTypeRaw,
+    activityTypeCounts,
     metrics: {
       leads: leads.length,
       opportunities: opportunities.length,
@@ -1935,7 +1971,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
       wonDeals: wonOpps.length,
       wonValue: wonOpps.reduce((sum: number, opp: any) => sum + Number(opp.value || 0), 0),
       requestSlaBreached: requestSlaRows.filter((row: any) => row.breached).length,
-      activitiesInRange: tasks.length,
+      activitiesInRange: activities.length,
       hotLeadsInRange: hotLeadsInRange.length,
       approvedQuotesInRange: approvedQuotes.length,
       approvedValueInRange,
@@ -2080,6 +2116,29 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
   res.json(hydratedLeads);
 });
 
+app.get('/api/leads/locations', requirePermission('manageLeads'), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+
+  const visibleLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanSeeLead(currentUser, lead));
+  const uniqueSorted = (field: 'district' | 'province') => {
+    const values = new Set<string>();
+    for (const lead of visibleLeads) {
+      const value = String(lead[field] || '').trim();
+      if (value) values.add(value);
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'th'));
+  };
+
+  res.json({
+    districts: uniqueSorted('district'),
+    provinces: uniqueSorted('province')
+  });
+});
+
 app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
@@ -2210,6 +2269,7 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
         const idx = (MemoryStore as any).leads.findIndex((item: any) => item._id === existingDuplicate._id);
         if (idx !== -1) (MemoryStore as any).leads[idx] = enrichedLead;
       }
+      await syncLeadAfterUpdate(existingDuplicate, enrichedLead, currentUser._id);
       Object.assign(existingDuplicate, enrichedLead);
       await syncLeadStageToOpportunity(enrichedLead, previousStage, currentUser._id, 'Excel import');
       updated.push({ _id: existingDuplicate._id, schoolName: enrichedLead.schoolName, stage: enrichedLead.stage });
@@ -2222,6 +2282,7 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
   await Promise.all(imported.map(async lead => {
     await Leads().insertOne(lead as any);
     await syncLeadStageToOpportunity(lead, undefined, currentUser._id, 'Excel import');
+    await syncLeadAfterUpdate({ ...lead, nextCallAt: undefined, stageEventAt: undefined, appointmentKind: undefined } as any, lead as any, currentUser._id);
   }));
   await createAuditLog(req, currentUser, parsed.format === 'xlsx' ? 'lead.import_xlsx' : 'lead.import_csv', 'lead', {}, { imported: imported.length, updated: updated.length, skipped: skipped.length });
   res.status(201).json({ imported: imported.length, updated: updated.length, skipped, format: parsed.format });
@@ -2283,11 +2344,13 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
   }
   const ownerId = assignedTo || currentUser._id;
   const nextStage = normalizeLeadStage(stage || 'TargetSchool');
+  const composedAddress = address || [district, province].filter(Boolean).join(' ');
+  const resolvedZone = zone || provinceToZone(province);
   const newLead = {
     _id: `l_${Date.now()}`,
     schoolName,
-    address,
-    zone,
+    address: composedAddress,
+    zone: resolvedZone,
     status: temperatureFromStage(nextStage),
     stage: nextStage,
     score: Number(score) || scoreFromStage(nextStage),

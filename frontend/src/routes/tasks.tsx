@@ -28,6 +28,21 @@ import { getUserColor, buildUserColorLegend } from '../lib/user-colors';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType, typeAllowsCustomLabel } from '../lib/task-types';
 
+function participantStatusLabel(status: string) {
+  switch (status) {
+    case 'Accepted':
+      return 'เข้าร่วม';
+    case 'Declined':
+      return 'ปฏิเสธ';
+    case 'Acknowledged':
+      return 'รับทราบ';
+    case 'Pending':
+      return 'รอตอบรับ';
+    default:
+      return status;
+  }
+}
+
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/tasks',
@@ -38,7 +53,7 @@ function TasksComponent() {
   const { user } = useAuth();
   const { types: taskTypes, selectOptions: taskTypeOptions } = useActivityTypes('task');
   const [tasks, setTasks] = useState<any[]>([]);
-  const [coworkers, setCoworkers] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'overdue' | 'completed'>('all');
@@ -75,7 +90,7 @@ function TasksComponent() {
       .catch(err => console.error('Failed to load tasks:', err));
 
     apiFetch('/api/users')
-      .then(data => setCoworkers(data.filter((u: any) => u._id !== user?._id)))
+      .then(data => setAllUsers(Array.isArray(data) ? data : []))
       .catch(err => console.error('Failed to load coworkers:', err));
     apiFetch('/api/leads')
       .then(data => setLeads(Array.isArray(data) ? data : []))
@@ -262,6 +277,12 @@ function TasksComponent() {
     t.creatorId === user?._id ||
     t.participants.some(p => p.userId === user?._id && p.status === 'Accepted')
   );
+  const coworkers = allUsers.filter(u => u._id !== user?._id);
+  const participantName = (userId: string) => {
+    if (userId === user?._id) return user.name;
+    const found = allUsers.find(u => u._id === userId);
+    return found?.name || found?.email || userId;
+  };
   const leadById = (id?: string) => leads.find(lead => lead._id === id);
   const now = new Date();
   const filteredSchedule = mySchedule.filter(t => {
@@ -488,7 +509,7 @@ function TasksComponent() {
                     className={`px-1.5 py-0.5 rounded text-[9px] border font-medium ${p.status === 'Accepted' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' : p.status === 'Declined' ? 'bg-rose-500/10 text-rose-400 border-rose-500/25' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
                     title={p.reason ? `ปฏิเสธเนื่องจาก: ${p.reason}` : ''}
                   >
-                    User {p.userId.replace('u', '')} ({p.status})
+                    {participantName(p.userId)} ({participantStatusLabel(p.status)})
                   </span>
                 ))}
               </div>
@@ -724,7 +745,7 @@ function TasksComponent() {
               <div className="flex flex-wrap gap-2">
                 {selectedTask.participants?.map((p: any) => (
                   <span key={p.userId} className={`px-2 py-1 rounded-lg border text-[10px] ${p.status === 'Accepted' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' : p.status === 'Declined' ? 'bg-rose-500/10 text-rose-300 border-rose-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                    {coworkers.find(cw => cw._id === p.userId)?.name || (p.userId === user?._id ? user.name : p.userId)}: {p.status}
+                    {participantName(p.userId)}: {participantStatusLabel(p.status)}
                   </span>
                 ))}
               </div>

@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, Calculator, CheckCircle2, FileText, Plus, Sea
 import { calculateQuoteTotals, formatMoney, getUserDiscountLimit } from '../lib/quoteMath';
 import { apiFetch, apiJson } from '../lib/api';
 import { filterLeadsBySearch } from '../lib/lead-search';
+import { NumericInput } from '../components/numeric-input';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -393,11 +394,11 @@ function QuoteBuilderComponent() {
                       <td className="px-4 py-3 font-semibold text-slate-200">{item.name}</td>
                       <td className="px-4 py-3 text-right text-slate-300">
                         {canEditUnitPrice(item) ? (
-                          <input
-                            type="number"
+                          <NumericInput
+                            allowDecimal
                             min={0}
                             value={item.price}
-                            onChange={e => updateItem(item.lineId, { price: Number(e.target.value) })}
+                            onChange={price => updateItem(item.lineId, { price })}
                             className="w-24 px-2 py-1.5 rounded border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-right focus:outline-none"
                           />
                         ) : (
@@ -405,10 +406,10 @@ function QuoteBuilderComponent() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <input type="number" min={1} value={item.quantity} onChange={e => updateItem(item.lineId, { quantity: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-center focus:outline-none" />
+                        <NumericInput min={1} value={item.quantity} onChange={quantity => updateItem(item.lineId, { quantity })} className="w-16 px-2 py-1.5 rounded border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-center focus:outline-none" />
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <input type="number" min={0} max={100} value={item.discountPercent} onChange={e => updateItem(item.lineId, { discountPercent: Number(e.target.value) })} className="w-16 px-2 py-1.5 rounded border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-center focus:outline-none" />
+                        <NumericInput min={0} max={100} value={item.discountPercent} onChange={discountPercent => updateItem(item.lineId, { discountPercent })} className="w-16 px-2 py-1.5 rounded border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-center focus:outline-none" />
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-200">{formatMoney(lineTotal)} ฿</td>
                       <td className="px-4 py-3 text-center">
@@ -438,11 +439,11 @@ function QuoteBuilderComponent() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] text-slate-500 font-semibold mb-1">ส่วนลดท้ายบิล</label>
-              <input type="number" min={0} max={100} value={overallDiscountPercent} onChange={e => setOverallDiscountPercent(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-right focus:outline-none focus:border-indigo-500" />
+              <NumericInput min={0} max={100} value={overallDiscountPercent} onChange={setOverallDiscountPercent} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-right focus:outline-none focus:border-indigo-500" />
             </div>
             <div>
               <label className="block text-[10px] text-slate-500 font-semibold mb-1">VAT</label>
-              <input type="number" min={0} max={100} value={vatPercent} onChange={e => setVatPercent(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-right focus:outline-none focus:border-indigo-500" />
+              <NumericInput allowDecimal min={0} max={100} value={vatPercent} onChange={setVatPercent} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 text-right focus:outline-none focus:border-indigo-500" />
             </div>
           </div>
 
@@ -498,7 +499,7 @@ function QuoteBuilderComponent() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] text-slate-500 mb-1">ปีการศึกษา</label>
-                <input type="number" min={2500} value={cleverAcademicYear} onChange={e => setCleverAcademicYear(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <NumericInput min={2500} value={cleverAcademicYear} onChange={setCleverAcademicYear} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
               </div>
               <div>
                 <label className="block text-[10px] text-slate-500 mb-1">ระดับชั้นนักเรียน</label>
@@ -508,16 +509,16 @@ function QuoteBuilderComponent() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] text-slate-500 mb-1">จำนวน User</label>
-                <input type="number" min={1} value={cleverUsers} onChange={e => setCleverUsers(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <NumericInput min={1} value={cleverUsers} onChange={setCleverUsers} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
               </div>
               <div>
                 <label className="block text-[10px] text-slate-500 mb-1">ราคาต่อ User (บาท)</label>
-                <input type="number" min={0} value={cleverUnitPrice} onChange={e => setCleverUnitPrice(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                <NumericInput allowDecimal min={0} value={cleverUnitPrice} onChange={setCleverUnitPrice} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
               </div>
             </div>
             <div>
               <label className="block text-[10px] text-slate-500 mb-1">ส่วนลด (%)</label>
-              <input type="number" min={0} max={100} value={cleverDiscount} onChange={e => setCleverDiscount(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              <NumericInput min={0} max={100} value={cleverDiscount} onChange={setCleverDiscount} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             </div>
             <p className="text-[10px] text-slate-500">มูลค่ารวม = จำนวน User × ราคาต่อ User (หักส่วนลดตามที่กำหนด)</p>
             <button type="button" onClick={confirmCleverLine} className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">เพิ่มรายการ</button>
@@ -538,7 +539,7 @@ function QuoteBuilderComponent() {
             </select>
             <div>
               <label className="block text-[10px] text-slate-500 mb-1">จำนวน User</label>
-              <input type="number" min={1} value={vrUsers} onChange={e => setVrUsers(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              <NumericInput min={1} value={vrUsers} onChange={setVrUsers} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             </div>
             <button type="button" onClick={confirmVrSoftwareLine} className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">เพิ่มรายการ</button>
           </div>
@@ -563,7 +564,7 @@ function QuoteBuilderComponent() {
             </select>
             <div>
               <label className="block text-[10px] text-slate-500 mb-1">จำนวน</label>
-              <input type="number" min={1} value={vrHwQty} onChange={e => setVrHwQty(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+              <NumericInput min={1} value={vrHwQty} onChange={setVrHwQty} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
             </div>
             <button type="button" onClick={confirmVrHardwareLine} className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">เพิ่มรายการ</button>
           </div>

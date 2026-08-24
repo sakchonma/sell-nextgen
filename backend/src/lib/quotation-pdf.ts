@@ -223,8 +223,9 @@ export function buildQuotationPdf(input: BuildQuotationPdfInput): Promise<Buffer
     doc.text(QUOTATION_COMPANY.name, companyX, companyY, { width: companyWidth, align: 'right' });
     companyY += 16;
     setFont(false, 10);
+    const addressHeight = doc.heightOfString(QUOTATION_COMPANY.address, { width: companyWidth, align: 'right' });
     doc.text(QUOTATION_COMPANY.address, companyX, companyY, { width: companyWidth, align: 'right' });
-    companyY += 14;
+    companyY += addressHeight + 2;
     doc.text(`Tax ID: ${QUOTATION_COMPANY.taxId}  Tel. ${QUOTATION_COMPANY.tel}`, companyX, companyY, {
       width: companyWidth,
       align: 'right',

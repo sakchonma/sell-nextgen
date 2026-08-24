@@ -24,6 +24,18 @@ function formatDateOnly(value: Date | string) {
   ].join('-');
 }
 
+function toIsoDay(dateStr: string) {
+  const trimmed = String(dateStr || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return formatDateOnly(parsed);
+}
+
 function dateOnlyRange(dateStr: string) {
   const start = new Date(`${dateStr}T09:00:00`);
   const end = new Date(`${dateStr}T10:00:00`);
@@ -91,18 +103,27 @@ async function updateLeadRecord(leadId: string, patch: Partial<Lead>) {
 
 export async function syncLeadNextCallAt(lead: Lead, creatorId: string) {
   const linked = await findLinkedTask(lead._id, 'lead_next_call');
-  const nextCallAt = lead.nextCallAt?.trim();
+  const isoDay = toIsoDay(lead.nextCallAt || '');
 
-  if (!nextCallAt) {
+  if (!isoDay) {
     if (linked) await deleteTaskById(linked._id);
     return;
   }
 
-  const { start, end } = dateOnlyRange(nextCallAt);
+  const { start, end } = dateOnlyRange(isoDay);
+  if (Number.isNaN(start.getTime())) {
+    if (linked) await deleteTaskById(linked._id);
+    return;
+  }
   const ownerId = lead.assignedTo || creatorId;
+  const participants = Array.isArray(linked?.participants) && linked.participants.length
+    ? (linked.participants.some((p: any) => p.userId === ownerId)
+      ? linked.participants
+      : [...linked.participants, { userId: ownerId, status: 'Accepted' }])
+    : [{ userId: ownerId, status: 'Accepted' }];
   const taskPayload = {
     _id: linked?._id || `t_sync_${lead._id}_nextcall`,
-    title: `Follow-up: ${lead.schoolName}`,
+    title: `นัดโทรครั้งถัดไป: ${lead.schoolName}`,
     description: `นัดโทรครั้งถัดไปจาก Lead`,
     type: 'FollowUp' as const,
     status: 'Pending' as const,
@@ -113,7 +134,7 @@ export async function syncLeadNextCallAt(lead: Lead, creatorId: string) {
     reminderMinutesBefore: 30,
     sourceRef: { type: 'lead_next_call', leadId: lead._id },
     creatorId: linked?.creatorId || ownerId,
-    participants: linked?.participants || [{ userId: ownerId, status: 'Accepted' }],
+    participants,
     comments: linked?.comments || [],
     createdAt: linked?.createdAt || new Date(),
     updatedAt: new Date(),
@@ -237,6 +258,7 @@ export async function syncLeadAfterUpdate(
   if (appendedNotes?.length) {
     await syncLeadNotesAdded(updatedLead, appendedNotes, creatorId);
   }
+  await syncLeadNextCallAt(updatedLead, creatorId);
   const stageChanged = previousLead.stage !== updatedLead.stage;
   const eventChanged = previousLead.stageEventAt !== updatedLead.stageEventAt;
   const kindChanged = previousLead.appointmentKind !== updatedLead.appointmentKind;
@@ -358,6 +380,15 @@ export async function runActivitySyncBackfill(options: { dryRun?: boolean } = {}
         await syncLeadNotesAdded(lead, [note], creatorId);
       }
       stats.noteTasksSynced += 1;
+    }
+
+    if (nextCallAt) {
+      const existingNextCall = await findLinkedTask(lead._id, 'lead_next_call');
+      const existingDay = existingNextCall ? formatDateOnly(existingNextCall.startAt) : '';
+      if (!existingNextCall || existingDay !== toIsoDay(nextCallAt)) {
+        if (!dryRun) await syncLeadNextCallAt(lead, creatorId);
+        stats.nextCallTasksSynced += 1;
+      }
     }
 
     if (!nextCallAt && activityNotes.length === 0) {
