@@ -64,22 +64,23 @@ type DateRangePreset = 'today' | 'week' | 'month';
 
 function getDateRangePreset(preset: DateRangePreset) {
   const now = new Date();
-  const to = dateKey(now);
+  const today = dateKey(now);
 
   if (preset === 'today') {
-    return { from: to, to };
+    return { from: today, to: today };
   }
 
   if (preset === 'week') {
     const day = now.getDay();
     const mondayOffset = day === 0 ? -6 : 1 - day;
-    const start = new Date(now);
-    start.setDate(now.getDate() + mondayOffset);
-    return { from: dateKey(start), to };
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+    return { from: dateKey(start), to: dateKey(end) };
   }
 
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { from: dateKey(start), to };
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { from: dateKey(start), to: dateKey(end) };
 }
 
 const DATE_RANGE_PRESETS: Array<{ id: DateRangePreset; label: string }> = [
@@ -95,6 +96,7 @@ function ReportsComponent() {
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [datePreset, setDatePreset] = useState<DateRangePreset | null>(null);
   const [activityType, setActivityType] = useState<ActivityTypeFilter>('all');
   const [activitySearch, setActivitySearch] = useState('');
   const [activityPage, setActivityPage] = useState(1);
@@ -280,18 +282,30 @@ function ReportsComponent() {
     const range = getDateRangePreset(preset);
     setDateFrom(range.from);
     setDateTo(range.to);
+    setDatePreset(preset);
     setActivityPage(1);
     closeDetailModal();
   };
 
-  const activeDatePreset = useMemo((): DateRangePreset | null => {
-    if (!dateFrom || !dateTo) return null;
-    for (const preset of DATE_RANGE_PRESETS) {
-      const range = getDateRangePreset(preset.id);
-      if (dateFrom === range.from && dateTo === range.to) return preset.id;
-    }
-    return null;
-  }, [dateFrom, dateTo]);
+  const handleDateFromChange = (value: string) => {
+    setDateFrom(value);
+    setDatePreset(null);
+  };
+
+  const handleDateToChange = (value: string) => {
+    setDateTo(value);
+    setDatePreset(null);
+  };
+
+  const clearFilters = () => {
+    setDateFrom('');
+    setDateTo('');
+    setDatePreset(null);
+    setActivityType('all');
+    setActivitySearch('');
+    setActivityPage(1);
+    closeDetailModal();
+  };
 
   const quoteRows = (status: 'approved' | 'pending' | 'rejected') =>
     reportSummary?.quoteApproval?.quotesByStatus?.[status] || [];
@@ -361,11 +375,11 @@ function ReportsComponent() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">จากวันที่</label>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+            <input type="date" value={dateFrom} onChange={(e) => handleDateFromChange(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">ถึงวันที่</label>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+            <input type="date" value={dateTo} onChange={(e) => handleDateToChange(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">ประเภทกิจกรรม</label>
@@ -377,7 +391,7 @@ function ReportsComponent() {
             </select>
           </div>
           <div className="flex items-end">
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setActivityType('all'); setActivitySearch(''); setActivityPage(1); closeDetailModal(); }} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
+            <button onClick={clearFilters} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
               ล้างตัวกรอง
             </button>
           </div>
@@ -387,10 +401,11 @@ function ReportsComponent() {
             <button
               key={preset.id}
               type="button"
+              aria-pressed={datePreset === preset.id}
               onClick={() => applyDatePreset(preset.id)}
               className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
-                activeDatePreset === preset.id
-                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200'
+                datePreset === preset.id
+                  ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                   : 'border-slate-800 text-slate-300 hover:bg-slate-800'
               }`}
             >
