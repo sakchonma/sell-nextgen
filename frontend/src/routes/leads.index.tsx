@@ -50,6 +50,7 @@ function LeadsIndexComponent() {
   const [stageEventAt, setStageEventAt] = useState('');
   const [newLeadSource, setNewLeadSource] = useState('Outbound');
   const [newLeadCampaign, setNewLeadCampaign] = useState('');
+  const [newLeadIsTest, setNewLeadIsTest] = useState(false);
   const [leadError, setLeadError] = useState('');
   const [leadMessage, setLeadMessage] = useState('');
   const [updatingLeadId, setUpdatingLeadId] = useState('');
@@ -151,7 +152,8 @@ function LeadsIndexComponent() {
       stage: newLeadStage,
       score: 10,
       source: newLeadSource,
-      campaign: newLeadCampaign || undefined
+      campaign: newLeadCampaign || undefined,
+      isTest: newLeadIsTest,
     })
       .then(() => {
         setShowAddModal(false);
@@ -160,6 +162,7 @@ function LeadsIndexComponent() {
         setNewLeadProvince('');
         setNewLeadStage('TargetSchool');
         setNewLeadCampaign('');
+        setNewLeadIsTest(false);
         fetchLeads('reset');
         apiFetch('/api/leads/locations')
           .then(data => setLocationOptions({
@@ -370,6 +373,11 @@ function LeadsIndexComponent() {
                 >
                   {lead.schoolName}
                 </Link>
+                {lead.isTest ? (
+                  <span className="shrink-0 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border border-amber-500/30 bg-amber-500/10 text-amber-300">
+                    Test
+                  </span>
+                ) : null}
               </div>
               <div className="mt-2 flex shrink-0 flex-wrap gap-1.5">
                 <div className="relative">
@@ -446,6 +454,19 @@ function LeadsIndexComponent() {
           <form onSubmit={handleAddLead} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มลีดโรงเรียนเป้าหมายใหม่</h3>
             {leadError && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{leadError}</div>}
+
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-[#090d16] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newLeadIsTest}
+                onChange={(e) => setNewLeadIsTest(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-indigo-500/40"
+              />
+              <div>
+                <span className="block text-xs font-semibold text-slate-200">โรงเรียนทดสอบ (Test)</span>
+                <span className="block text-[10px] text-slate-500 mt-0.5">ไม่นำไปคำนวณในรายงานและสถิติ</span>
+              </div>
+            </label>
             
             <div>
               <label className="block text-xs text-slate-400 font-semibold mb-1">ชื่อโรงเรียน</label>

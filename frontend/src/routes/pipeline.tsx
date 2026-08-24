@@ -115,7 +115,7 @@ function PipelineComponent() {
   }, []);
 
   const pipelineLeads = useMemo(
-    () => leads.filter(lead => !lead.archived),
+    () => leads.filter(lead => !lead.archived && !lead.isTest),
     [leads]
   );
 

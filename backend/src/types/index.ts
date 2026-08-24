@@ -82,6 +82,7 @@ export interface Lead {
   source?: string;
   campaign?: string;
   archived?: boolean;
+  isTest?: boolean;
   contacts: Array<{
     name: string;
     position: string;

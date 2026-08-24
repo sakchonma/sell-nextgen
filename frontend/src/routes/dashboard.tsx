@@ -46,23 +46,28 @@ function DashboardComponent() {
   }, [user?._id]);
 
   const metrics = useMemo(() => {
-    const activePipeline = opportunities
+    const productionLeads = leads.filter(lead => !lead.isTest);
+    const productionLeadIds = new Set(productionLeads.map(lead => lead._id));
+    const productionOpportunities = opportunities.filter(opp => productionLeadIds.has(opp.leadId));
+    const productionTasks = tasks.filter(task => !task.leadId || productionLeadIds.has(task.leadId));
+    const activePipeline = productionOpportunities
       .filter(opp => !['Won', 'Lost'].includes(opp.stage))
       .reduce((sum, opp) => sum + Number(opp.value || 0), 0);
-    const wonDeals = opportunities
+    const wonDeals = productionOpportunities
       .filter(opp => opp.stage === 'Won')
       .reduce((sum, opp) => sum + Number(opp.value || 0), 0);
-    const overdueTasks = tasks.filter(task => task.status !== 'Completed' && new Date(task.endAt) < new Date()).length;
+    const overdueTasks = productionTasks.filter(task => task.status !== 'Completed' && new Date(task.endAt) < new Date()).length;
     return {
       pipelineActive: `${activePipeline.toLocaleString('th-TH')} ฿`,
       wonDeals: `${wonDeals.toLocaleString('th-TH')} ฿`,
-      hotLeads: leads.filter(lead => lead.status === 'Hot').length,
+      hotLeads: productionLeads.filter(lead => lead.status === 'Hot').length,
       overdueTasks
     };
   }, [leads, opportunities, tasks]);
 
   const leadStatusBars = useMemo(() => {
-    const total = Math.max(leads.length, 1);
+    const productionLeads = leads.filter(lead => !lead.isTest);
+    const total = Math.max(productionLeads.length, 1);
     const stages = [
       { key: 'Cold', stage: 'ลูกค้าเป้าหมายที่รอคัดเลือก (Cold)', color: 'from-blue-600 to-blue-500' },
       { key: 'Warm', stage: 'เริ่มติดต่อแนะนำหลักสูตร (Warm)', color: 'from-indigo-600 to-indigo-500' },
@@ -70,19 +75,24 @@ function DashboardComponent() {
       { key: 'Customer', stage: 'ปิดดีลส่งมอบหลักสูตร (Customer)', color: 'from-emerald-600 to-emerald-500' }
     ];
     return stages.map(item => {
-      const count = leads.filter(lead => lead.status === item.key).length;
+      const count = productionLeads.filter(lead => lead.status === item.key).length;
       return { ...item, count, pct: `${Math.round((count / total) * 100)}%` };
     });
   }, [leads]);
 
   const recentActivities = useMemo(() => {
-    const quoteActs = quotes.map(quote => ({
+    const productionLeadIds = new Set(leads.filter(lead => !lead.isTest).map(lead => lead._id));
+    const quoteActs = quotes
+      .filter(quote => productionLeadIds.has(quote.leadId))
+      .map(quote => ({
       title: quote.status === 'PendingApproval' ? 'ส่งใบเสนอราคารออนุมัติ' : 'อัปเดตใบเสนอราคา',
       body: `${quote.quoteNumber || 'Quote'} มูลค่า ${Number(quote.totalAmount || 0).toLocaleString('th-TH')} บาท`,
       time: quote.updatedAt || quote.createdAt,
       type: 'quote'
     }));
-    const taskActs = tasks.map(task => ({
+    const taskActs = tasks
+      .filter(task => !task.leadId || productionLeadIds.has(task.leadId))
+      .map(task => ({
       title: 'บันทึกนัดหมาย/งาน',
       body: task.title,
       time: task.updatedAt || task.startAt,
@@ -97,10 +107,10 @@ function DashboardComponent() {
     return [...quoteActs, ...taskActs, ...requestActs]
       .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
       .slice(0, 5);
-  }, [quotes, requests, tasks]);
+  }, [leads, quotes, requests, tasks]);
 
   const todaysTasks = tasks
-    .filter(task => new Date(task.startAt).toDateString() === new Date().toDateString())
+    .filter(task => (!task.leadId || !leads.find(lead => lead._id === task.leadId)?.isTest) && new Date(task.startAt).toDateString() === new Date().toDateString())
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     .slice(0, 3);
 

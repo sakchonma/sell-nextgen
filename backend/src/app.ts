@@ -683,6 +683,7 @@ const createLeadBodySchema = z.object({
   legacySaleName: optionalTextSchema,
   source: optionalTextSchema,
   campaign: optionalTextSchema,
+  isTest: z.coerce.boolean().optional().default(false),
   assignedTo: idSchema.optional(),
   contacts: z.array(leadContactSchema).default([]),
   attachments: z.array(leadAttachmentSchema).default([])
@@ -716,6 +717,7 @@ const updateLeadBodySchema = z.object({
   assignedTo: idSchema.optional(),
   transferReason: optionalTextSchema,
   archived: z.coerce.boolean().optional(),
+  isTest: z.coerce.boolean().optional(),
   contacts: z.array(leadContactSchema).optional(),
   notes: z.array(leadNoteSchema).optional(),
   attachments: z.array(leadAttachmentSchema).optional()
@@ -1021,6 +1023,10 @@ function normalizeDuplicateKey(value?: string) {
 
 function normalizePhone(value?: string) {
   return (value || '').replace(/\D/g, '');
+}
+
+function isTestLead(lead: any) {
+  return Boolean(lead?.isTest);
 }
 
 function userCanSeeLead(user: any, lead: any) {
@@ -1777,23 +1783,27 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     findAll<any>(Users())
   ]);
   const userMap = new Map(users.map((user: any) => [user._id, user]));
-  const visibleLeads = leadsRaw.filter((lead: any) => userCanSeeLead(currentUser, lead));
+  const testLeadIds = new Set(leadsRaw.filter(isTestLead).map((lead: any) => lead._id));
+  const visibleLeads = leadsRaw.filter((lead: any) => userCanSeeLead(currentUser, lead) && !isTestLead(lead));
   const leads = visibleLeads.filter((lead: any) => inRangeByDate(lead.createdAt));
   const visibleLeadIds = new Set(leads.map((lead: any) => lead._id));
   const opportunities = oppsRaw
     .filter((opp: any) => currentUser.rank >= 4 || opp.assignedTo === currentUser._id || visibleLeadIds.has(opp.leadId))
+    .filter((opp: any) => !testLeadIds.has(opp.leadId))
     .filter((opp: any) => inRangeByDate(opp.createdAt));
   const quotes = quotesRaw
     .filter((quote: any) => currentUser.rank >= 4 || quote.creatorId === currentUser._id || getSupportDepartment(currentUser) === 'Finance')
+    .filter((quote: any) => !testLeadIds.has(quote.leadId))
     .filter((quote: any) => inRangeByDate(quote.createdAt));
   const requests = requestsRaw
     .filter((request: any) => currentUser.rank >= 4 || request.creatorId === currentUser._id || request.assignment?.assignedToId === currentUser._id || (currentUser.rank === 2 && request.targetDepartment === getSupportDepartment(currentUser)))
     .filter((request: any) => inRangeByDate(request.createdAt));
 
   const tasksVisible = tasksRaw.filter((task: any) =>
-    currentUser.rank >= 4 ||
+    (currentUser.rank >= 4 ||
     task.creatorId === currentUser._id ||
-    (task.participants || []).some((participant: any) => participant.userId === currentUser._id)
+    (task.participants || []).some((participant: any) => participant.userId === currentUser._id)) &&
+    (!task.leadId || !testLeadIds.has(task.leadId))
   );
   const tasksByDate = tasksVisible.filter((task: any) => inRangeByDate(task.startAt || task.createdAt));
   const tasks = tasksByDate.filter((task: any) => activityTypeMatches(task.type));
@@ -2333,6 +2343,7 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     legacySaleName,
     source,
     campaign,
+    isTest,
     assignedTo,
     contacts,
     attachments
@@ -2372,6 +2383,7 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     legacySaleName,
     source,
     campaign,
+    isTest: Boolean(isTest),
     archived: false,
     contacts: contacts || [],
     assignedTo: ownerId,
@@ -2435,6 +2447,7 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     source,
     campaign,
     archived,
+    isTest,
     attachments
   } = req.body;
   if (!userCanSeeLead(currentUser, lead)) {
@@ -2506,6 +2519,7 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     assignedTo: assignedTo || lead.assignedTo,
     assignmentHistory,
     archived: archived !== undefined ? archived : lead.archived,
+    isTest: isTest !== undefined ? Boolean(isTest) : lead.isTest ?? false,
     contacts: contacts || lead.contacts,
     notes: notes ? [...lead.notes, ...notes.map((note: any) => ({ ...note, createdAt: note.createdAt || new Date() }))] : lead.notes,
     attachments: attachments || lead.attachments || [],
