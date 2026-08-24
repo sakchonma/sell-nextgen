@@ -108,8 +108,8 @@ function CalendarComponent() {
   const userIds = teamMembers.map(m => m._id);
   const userLegend = buildUserColorLegend(teamMembers);
   const taskColor = (task: any) => {
-    if (task.status === 'Completed') return 'border-emerald-400/80 bg-emerald-600/50 text-white';
-    if (new Date(task.endAt) < new Date()) return 'border-rose-400/80 bg-rose-600/50 text-white';
+    if (task.status === 'Completed') return 'border-emerald-600 bg-emerald-200 text-slate-900';
+    if (new Date(task.endAt) < new Date()) return 'border-rose-600 bg-rose-200 text-slate-900';
     const color = getUserColor(task.creatorId, userIds);
     return `${color.className}`;
   };
@@ -217,8 +217,8 @@ function CalendarComponent() {
                 <div className="space-y-2">
                   {items.map(task => (
                     <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-2 rounded-lg border text-left ${taskColor(task)}`}>
-                      <div className="text-[9px] text-white/90">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
-                      <div className="text-[10px] font-semibold text-white line-clamp-2">{task.title}</div>
+                      <div className="text-[9px] text-slate-800">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+                      <div className="text-[10px] font-semibold text-slate-900 line-clamp-2">{task.title}</div>
                     </button>
                   ))}
                 </div>
@@ -232,9 +232,9 @@ function CalendarComponent() {
         <div className="p-6 rounded-2xl glass-panel space-y-3">
           {dayTasks.map(task => (
             <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-4 rounded-xl border text-left ${taskColor(task)}`}>
-              <div className="text-[10px] text-white/90">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.endAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
-              <h4 className="text-sm font-semibold text-white mt-1">{task.title}</h4>
-              <p className="text-xs text-white/90 mt-1">{task.description || 'ไม่มีรายละเอียด'}</p>
+              <div className="text-[10px] text-slate-800">{new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.endAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+              <h4 className="text-sm font-semibold text-slate-900 mt-1">{task.title}</h4>
+              <p className="text-xs text-slate-800 mt-1">{task.description || 'ไม่มีรายละเอียด'}</p>
             </button>
           ))}
           {dayTasks.length === 0 && <div className="py-12 text-center text-xs text-slate-500">ไม่มีตารางงานในวันนี้</div>}
@@ -281,8 +281,8 @@ function CalendarComponent() {
               <div className="mt-3 space-y-2 flex-1">
                 {dayTasks.slice(0, 2).map(task => (
                   <button key={task._id} onClick={() => setSelectedTask(task)} className={`w-full p-2 rounded border text-[10px] space-y-1 text-left hover:border-indigo-500/30 ${taskColor(task)}`}>
-                    <span className="font-bold text-white block line-clamp-1">{task.title}</span>
-                    <div className="flex items-center justify-between text-white/85 text-[9px]">
+                    <span className="font-bold text-slate-900 block line-clamp-1">{task.title}</span>
+                    <div className="flex items-center justify-between text-slate-800 text-[9px]">
                       <span className="flex items-center gap-0.5"><Clock size={8} /> {new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
                       <span className="flex items-center gap-0.5"><UserIcon size={8} /> {getCreatorName(task.creatorId).split(' ')[0]}</span>
                     </div>
@@ -332,12 +332,12 @@ function CalendarComponent() {
                   }}
                   className={`w-full p-3 rounded-lg border text-left ${taskColor(task)}`}
                 >
-                  <div className="text-[10px] text-white/90">
+                  <div className="text-[10px] text-slate-800">
                     {new Date(task.startAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
                     {' · '}
                     {getCreatorName(task.creatorId)}
                   </div>
-                  <div className="text-xs font-semibold text-white mt-1">{task.title}</div>
+                  <div className="text-xs font-semibold text-slate-900 mt-1">{task.title}</div>
                 </button>
               ))}
             </div>

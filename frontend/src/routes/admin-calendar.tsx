@@ -514,13 +514,13 @@ function AdminCalendarComponent() {
                       <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${sourceStyle(event.source)}`}>
                         {SOURCE_LABELS[event.source]}
                       </span>
-                      <span className="text-[9px] text-white/90 flex items-center gap-1">
+                      <span className="text-[9px] text-slate-800 flex items-center gap-1">
                         <Clock size={9} /> {timeValue(event.startAt)}
                       </span>
                     </div>
-                    <span className="block mt-1.5 text-[10px] font-bold text-white line-clamp-2">{event.title}</span>
+                    <span className="block mt-1.5 text-[10px] font-bold text-slate-900 line-clamp-2">{event.title}</span>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="truncate text-[9px] text-white/80">{departmentLabel(event.department)}</span>
+                      <span className="truncate text-[9px] text-slate-800">{departmentLabel(event.department)}</span>
                       <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[8px] font-bold ${statusStyle(event.status)}`}>{event.status}</span>
                     </div>
                   </button>
@@ -574,9 +574,9 @@ function AdminCalendarComponent() {
                       <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${sourceStyle(event.source)}`}>
                         {SOURCE_LABELS[event.source]}
                       </span>
-                      <span className="text-[9px] text-white/90">{timeValue(event.startAt)}</span>
+                      <span className="text-[9px] text-slate-800">{timeValue(event.startAt)}</span>
                     </div>
-                    <span className="block mt-1.5 text-[10px] font-bold text-white">{event.title}</span>
+                    <span className="block mt-1.5 text-[10px] font-bold text-slate-900">{event.title}</span>
                   </button>
                 ))}
             </div>

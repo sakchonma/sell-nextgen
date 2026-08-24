@@ -1,16 +1,16 @@
 const PALETTE = [
-  { border: 'border-blue-400/80', bg: 'bg-blue-600/45', text: 'text-white', dot: 'bg-blue-400' },
-  { border: 'border-emerald-400/80', bg: 'bg-emerald-600/45', text: 'text-white', dot: 'bg-emerald-400' },
-  { border: 'border-amber-400/80', bg: 'bg-amber-600/50', text: 'text-white', dot: 'bg-amber-400' },
-  { border: 'border-rose-400/80', bg: 'bg-rose-600/45', text: 'text-white', dot: 'bg-rose-400' },
-  { border: 'border-purple-400/80', bg: 'bg-purple-600/45', text: 'text-white', dot: 'bg-purple-400' },
-  { border: 'border-cyan-400/80', bg: 'bg-cyan-600/45', text: 'text-white', dot: 'bg-cyan-400' },
-  { border: 'border-orange-400/80', bg: 'bg-orange-600/50', text: 'text-white', dot: 'bg-orange-400' },
-  { border: 'border-pink-400/80', bg: 'bg-pink-600/45', text: 'text-white', dot: 'bg-pink-400' },
-  { border: 'border-teal-400/80', bg: 'bg-teal-600/45', text: 'text-white', dot: 'bg-teal-400' },
-  { border: 'border-indigo-400/80', bg: 'bg-indigo-600/45', text: 'text-white', dot: 'bg-indigo-400' },
-  { border: 'border-lime-400/80', bg: 'bg-lime-700/50', text: 'text-white', dot: 'bg-lime-400' },
-  { border: 'border-fuchsia-400/80', bg: 'bg-fuchsia-600/45', text: 'text-white', dot: 'bg-fuchsia-400' },
+  { border: 'border-blue-500', bg: 'bg-blue-200', text: 'text-slate-900', dot: 'bg-blue-500' },
+  { border: 'border-emerald-500', bg: 'bg-emerald-200', text: 'text-slate-900', dot: 'bg-emerald-500' },
+  { border: 'border-amber-500', bg: 'bg-amber-200', text: 'text-slate-900', dot: 'bg-amber-500' },
+  { border: 'border-rose-500', bg: 'bg-rose-200', text: 'text-slate-900', dot: 'bg-rose-500' },
+  { border: 'border-purple-500', bg: 'bg-purple-200', text: 'text-slate-900', dot: 'bg-purple-500' },
+  { border: 'border-cyan-500', bg: 'bg-cyan-200', text: 'text-slate-900', dot: 'bg-cyan-500' },
+  { border: 'border-orange-500', bg: 'bg-orange-200', text: 'text-slate-900', dot: 'bg-orange-500' },
+  { border: 'border-pink-500', bg: 'bg-pink-200', text: 'text-slate-900', dot: 'bg-pink-500' },
+  { border: 'border-teal-500', bg: 'bg-teal-200', text: 'text-slate-900', dot: 'bg-teal-500' },
+  { border: 'border-indigo-500', bg: 'bg-indigo-200', text: 'text-slate-900', dot: 'bg-indigo-500' },
+  { border: 'border-lime-600', bg: 'bg-lime-200', text: 'text-slate-900', dot: 'bg-lime-600' },
+  { border: 'border-fuchsia-500', bg: 'bg-fuchsia-200', text: 'text-slate-900', dot: 'bg-fuchsia-500' },
 ];
 
 function stableIndex(userId: string, orderedIds?: string[]) {
