@@ -994,7 +994,7 @@ function LeadDetailComponent() {
 
       {showSaveOk && (
         <ModalShell>
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center space-y-4">
+          <div className="mx-auto w-[min(20rem,calc(100vw-2rem))] shrink-0 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl text-center space-y-4">
             <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center ${saveMessage === 'บันทึกเรียบร้อย' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
               <CheckCircle2 size={24} />
             </div>
@@ -1002,7 +1002,7 @@ function LeadDetailComponent() {
             <button
               type="button"
               onClick={() => setShowSaveOk(false)}
-              className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white"
+              className="mx-auto min-w-[8rem] px-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white"
             >
               OK
             </button>
