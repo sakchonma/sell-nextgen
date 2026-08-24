@@ -90,7 +90,7 @@ const DATE_RANGE_PRESETS: Array<{ id: DateRangePreset; label: string }> = [
 ];
 
 function ReportsComponent() {
-  const { types: taskTypes, selectOptions: taskTypeOptions } = useActivityTypes('task');
+  const { types: activityTypes, selectOptions: activityTypeOptions } = useActivityTypes();
   const [leads, setLeads] = useState<any[]>([]);
   const [reportSummary, setReportSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -206,7 +206,7 @@ function ReportsComponent() {
       parts.push('แสดงทั้งหมด');
     }
     if (activityType !== 'all') {
-      parts.push(`ประเภท: ${formatTaskType(activityType, undefined, taskTypes)}`);
+      parts.push(`ประเภท: ${formatTaskType(activityType, undefined, activityTypes)}`);
     }
     return parts.join(' · ');
   }, [dateFrom, dateTo, activityType]);
@@ -217,7 +217,7 @@ function ReportsComponent() {
     return activities.filter((activity: any) => {
       if (!q) return true;
       const school = leadById(activity.leadId)?.schoolName || '';
-      const typeText = formatTaskType(activity.type, activity.typeLabel, taskTypes);
+      const typeText = formatTaskType(activity.type, activity.typeLabel, activityTypes);
       return (
         String(activity.title || '').toLowerCase().includes(q) ||
         school.toLowerCase().includes(q) ||
@@ -372,7 +372,7 @@ function ReportsComponent() {
       </div>
 
       <section className="p-4 rounded-2xl glass-panel">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">จากวันที่</label>
             <input type="date" value={dateFrom} onChange={(e) => handleDateFromChange(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
@@ -380,15 +380,6 @@ function ReportsComponent() {
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">ถึงวันที่</label>
             <input type="date" value={dateTo} onChange={(e) => handleDateToChange(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 mb-1">ประเภทกิจกรรม</label>
-            <select value={activityType} onChange={(e) => setActivityType(e.target.value as ActivityTypeFilter)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-              <option value="all">ทั้งหมด</option>
-              {taskTypeOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
           </div>
           <div className="flex items-end">
             <button onClick={clearFilters} className="w-full px-3 py-2 rounded-lg border border-slate-800 text-xs text-slate-300 hover:bg-slate-800">
@@ -412,6 +403,41 @@ function ReportsComponent() {
               {preset.label}
             </button>
           ))}
+        </div>
+        <div className="mt-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <label className="block text-[10px] font-bold text-slate-500">ประเภทกิจกรรม</label>
+            <span className="text-[10px] text-slate-500">ทั้งหมด {activityTypeOptions.length} ประเภท</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={activityType === 'all'}
+              onClick={() => setActivityType('all')}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                activityType === 'all'
+                  ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'border-slate-800 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              ทั้งหมด
+            </button>
+            {activityTypeOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={activityType === opt.value}
+                onClick={() => setActivityType(opt.value)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                  activityType === opt.value
+                    ? 'border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'border-slate-800 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-[10px] text-slate-500">Report scope: {reportSummary?.scope === 'team' ? 'ทีม/องค์กรตามสิทธิ์' : 'ข้อมูลส่วนตัวตามสิทธิ์'}</span>
@@ -614,7 +640,7 @@ function ReportsComponent() {
                       <div>
                         <div className="text-base font-bold text-slate-100">{row.title}</div>
                         <div className="text-sm text-slate-400 mt-1">
-                          {formatTaskType(row.type, row.typeLabel, taskTypes)}
+                          {formatTaskType(row.type, row.typeLabel, activityTypes)}
                           {leadById(row.leadId)?.schoolName ? ` · ${leadById(row.leadId)?.schoolName}` : ''}
                         </div>
                       </div>
@@ -748,7 +774,7 @@ function ReportsComponent() {
           {pagedActivities.map((activity: any) => (
             <div key={activity._id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="inline-block px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel, taskTypes)}</span>
+                <span className="inline-block px-2.5 py-1 rounded bg-slate-800 text-xs text-slate-400 border border-slate-700">{formatTaskType(activity.type, activity.typeLabel, activityTypes)}</span>
                 <h4 className="mt-2 text-sm font-semibold text-slate-200">{activity.title}</h4>
                 <p className="text-xs text-slate-500 line-clamp-1 mt-1">{activity.description || leadById(activity.leadId)?.schoolName || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
               </div>
