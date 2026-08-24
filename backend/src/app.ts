@@ -1040,6 +1040,16 @@ function userCanSeeLead(user: any, lead: any) {
   return lead.assignedTo === user._id || lead.zone === user.zone;
 }
 
+function userCanWorkOnLead(user: any, lead: any) {
+  if (!user || !lead) return false;
+  if (user.rank >= 3 || isRootAdmin(user)) return true;
+  return userCanSeeLead(user, lead);
+}
+
+function userCanChangeLeadOwner(user: any) {
+  return Boolean(user && (user.rank >= 4 || isRootAdmin(user)));
+}
+
 function findLeadDuplicates(leads: any[], candidate: any, excludeId?: string) {
   const nameKey = normalizeDuplicateKey(candidate.schoolName);
   const phones = new Set((candidate.contacts || []).map((contact: any) => normalizePhone(contact.phone)).filter(Boolean));
@@ -1068,7 +1078,7 @@ async function decorateLeadDuplicates(duplicates: any[], currentUser: any) {
   return duplicates.map(item => {
     const lead = leadMap.get(item._id);
     const owner = userMap.get(item.assignedTo || lead?.assignedTo);
-    const visible = userCanSeeLead(currentUser, lead || item);
+    const visible = userCanWorkOnLead(currentUser, lead || item);
     return {
       ...item,
       assignedToName: owner?.name || lead?.legacySaleName || '',
@@ -2134,12 +2144,6 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     return true;
   });
 
-  // Filter leads based on Sales zone if current user is Sales (rank 3)
-  if (currentUser.rank === 3) {
-    const userZone = currentUser.zone || '';
-    leadsArray = leadsArray.filter(l => l.assignedTo === currentUser._id || l.zone === userZone);
-  }
-
   leadsArray.sort((a, b) => {
     const aTime = asDate(a.updatedAt || a.createdAt).getTime();
     const bTime = asDate(b.updatedAt || b.createdAt).getTime();
@@ -2169,7 +2173,7 @@ app.get('/api/leads/locations', requirePermission('manageLeads'), async (req, re
     return;
   }
 
-  const visibleLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanSeeLead(currentUser, lead));
+  const visibleLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanWorkOnLead(currentUser, lead));
   const uniqueSorted = (field: 'district' | 'province') => {
     const values = new Set<string>();
     for (const lead of visibleLeads) {
@@ -2193,7 +2197,7 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
   }
   const users = await findAll<any>(Users());
   const userMap = new Map(users.map(user => [user._id, user]));
-  const allLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanSeeLead(currentUser, lead));
+  const allLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanWorkOnLead(currentUser, lead));
   const escapeCsv = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const rows = [
     ['schoolName', 'address', 'zone', 'status', 'stage', 'score', 'gradeLevels', 'educationAuthority', 'district', 'province', 'studentCount', 'upperElementaryStudentCount', 'lastContactedAt', 'nextCallAt', 'remarks', 'legacySaleName', 'source', 'campaign', 'assignedTo', 'contacts'].join(','),
@@ -2341,7 +2345,7 @@ app.get('/api/leads/:id', requirePermission('manageLeads'), async (req, res) => 
     return;
   }
   const lead = await Leads().findOne({ _id: req.params.id } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
@@ -2489,8 +2493,12 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     isTest,
     attachments
   } = req.body;
-  if (!userCanSeeLead(currentUser, lead)) {
+  if (!userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
+    return;
+  }
+  if (!userCanChangeLeadOwner(currentUser) && assignedTo && assignedTo !== lead.assignedTo) {
+    res.status(403).json({ message: 'ไม่มีสิทธิ์เปลี่ยนผู้ดูแลโรงเรียน' });
     return;
   }
   if (contacts) {
@@ -2515,13 +2523,14 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
   const previousStage = normalizeLeadStage(lead.stage);
   const nextStage = stage !== undefined ? normalizeLeadStage(stage) : previousStage;
   const nextStatus = temperatureFromStage(nextStage);
-  const isTransfer = assignedTo && assignedTo !== lead.assignedTo;
+  const nextAssignedTo = userCanChangeLeadOwner(currentUser) ? (assignedTo || lead.assignedTo) : lead.assignedTo;
+  const isTransfer = nextAssignedTo !== lead.assignedTo;
   const assignmentHistory = isTransfer
     ? [
         ...(lead.assignmentHistory || []),
         {
           fromUserId: lead.assignedTo,
-          toUserId: assignedTo,
+          toUserId: nextAssignedTo,
           changedBy: currentUser._id,
           reason: transferReason,
           changedAt: new Date()
@@ -2558,7 +2567,7 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     legacySaleName: legacySaleName !== undefined ? legacySaleName : lead.legacySaleName,
     source: source !== undefined ? source : lead.source,
     campaign: campaign !== undefined ? campaign : lead.campaign,
-    assignedTo: assignedTo || lead.assignedTo,
+    assignedTo: nextAssignedTo,
     assignmentHistory,
     archived: archived !== undefined ? archived : lead.archived,
     isTest: isTest !== undefined ? Boolean(isTest) : lead.isTest ?? false,
@@ -2608,7 +2617,7 @@ app.patch('/api/leads/:id/notes/:noteKey', requirePermission('manageLeads'), val
   }
   const leadsColl = Leads();
   const lead = await leadsColl.findOne({ _id: req.params.id } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
@@ -2644,7 +2653,7 @@ app.delete('/api/leads/:id/notes/:noteKey', requirePermission('manageLeads'), as
   }
   const leadsColl = Leads();
   const lead = await leadsColl.findOne({ _id: req.params.id } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
@@ -2672,7 +2681,7 @@ app.get('/api/leads/:id/activity', requirePermission('manageLeads'), async (req,
     return;
   }
   const lead = await Leads().findOne({ _id: req.params.id } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
@@ -2747,7 +2756,7 @@ app.delete('/api/leads/:id', requirePermission('manageLeads'), async (req, res) 
   }
   const leadColl = Leads();
   const lead = await leadColl.findOne({ _id: req.params.id } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
@@ -2867,7 +2876,7 @@ app.post('/api/opportunities', requirePermission('managePipeline'), validateBody
 
   const { leadId, title, value, closeDate, stage, assignedTo, probability, quoteIds } = req.body;
   const lead = await Leads().findOne({ _id: leadId } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }
@@ -3059,7 +3068,7 @@ app.post('/api/activities/log', requirePermission('manageTasks'), validateBody(l
     return;
   }
   const lead = await Leads().findOne({ _id: req.body.leadId } as any);
-  if (!lead || !userCanSeeLead(currentUser, lead)) {
+  if (!lead || !userCanWorkOnLead(currentUser, lead)) {
     res.status(404).json({ message: 'ไม่พบข้อมูลโรงเรียน' });
     return;
   }

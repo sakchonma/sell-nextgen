@@ -58,6 +58,7 @@ function LeadDetailComponent() {
   const { leadId } = useParams({ from: '/leads/$leadId' });
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canChangeOwner = (user?.rank || 0) >= 4;
   const { types: noteTypes, selectOptions: noteTypeOptions } = useActivityTypes('note');
   const [lead, setLead] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -522,15 +523,19 @@ function LeadDetailComponent() {
 
             <div className="pt-4 border-t border-slate-800 space-y-3">
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                <Repeat2 size={13} /> Transfer Owner
+                <Repeat2 size={13} /> ผู้ดูแล
               </h3>
-              <form onSubmit={wrapFormSubmit(handleTransferOwner)} className="space-y-2">
-                <select value={transferTo} onChange={e => setTransferTo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
-                  {users.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
-                </select>
-                <input value={transferReason} onChange={e => setTransferReason(e.target.value)} placeholder="เหตุผลการโอนงาน" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
-                <button disabled={!transferTo || transferTo === lead.assignedTo} type="submit" className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white disabled:opacity-40">โอนผู้ดูแล</button>
-              </form>
+              {canChangeOwner ? (
+                <form onSubmit={wrapFormSubmit(handleTransferOwner)} className="space-y-2">
+                  <select value={transferTo} onChange={e => setTransferTo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+                    {users.map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
+                  </select>
+                  <input value={transferReason} onChange={e => setTransferReason(e.target.value)} placeholder="เหตุผลการโอนงาน" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
+                  <button disabled={!transferTo || transferTo === lead.assignedTo} type="submit" className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white disabled:opacity-40">โอนผู้ดูแล</button>
+                </form>
+              ) : (
+                <p className="text-xs text-slate-300">{userName(lead.assignedTo)}</p>
+              )}
             </div>
 
             <div className="pt-4 border-t border-slate-800 space-y-2">
