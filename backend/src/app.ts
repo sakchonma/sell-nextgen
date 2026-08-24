@@ -2058,6 +2058,12 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     leadsArray = leadsArray.filter(l => l.assignedTo === currentUser._id || l.zone === userZone);
   }
 
+  leadsArray.sort((a, b) => {
+    const aTime = asDate(a.updatedAt || a.createdAt).getTime();
+    const bTime = asDate(b.updatedAt || b.createdAt).getTime();
+    return bTime - aTime;
+  });
+
   const hydratedLeads = leadsArray.map(hydrateLeadForResponse);
   if (hasPagingParams) {
     const items = hydratedLeads.slice(pageOffset, pageOffset + pageLimit);
@@ -3691,13 +3697,7 @@ app.post('/api/quotes/:id/convert-to-opportunity', requirePermission('manageQuot
   res.status(201).json(opportunity);
 });
 
-app.get('/api/discount-settings', requirePermission('manageDiscounts'), async (req, res) => {
-  const currentUser = await getCurrentUser(req);
-  if (!currentUser || (currentUser.rank < 4 && getSupportDepartment(currentUser) !== 'Finance')) {
-    res.status(403).json({ message: 'ไม่มีสิทธิ์ดูการตั้งค่าส่วนลด' });
-    return;
-  }
-
+app.get('/api/discount-settings', requireAuthenticated(), async (_req, res) => {
   const settings = await findAll<any>(DiscountLimits());
   res.json(settings[0] || {
     _id: 'discount_default',

@@ -13,6 +13,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { ModalShell } from '../components/ui';
 import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle, stageRequiresEventAt, temperatureFromStage, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
 const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
@@ -419,7 +420,7 @@ function LeadsIndexComponent() {
 
       {/* ADD LEAD MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <ModalShell>
           <form onSubmit={handleAddLead} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มลีดโรงเรียนเป้าหมายใหม่</h3>
             {leadError && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{leadError}</div>}
@@ -503,11 +504,11 @@ function LeadsIndexComponent() {
               </button>
             </div>
           </form>
-        </div>
+        </ModalShell>
       )}
 
       {pendingStage && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <ModalShell>
           <form
             onSubmit={e => {
               e.preventDefault();
@@ -547,7 +548,7 @@ function LeadsIndexComponent() {
               <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">บันทึก</button>
             </div>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

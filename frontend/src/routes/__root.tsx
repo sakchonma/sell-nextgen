@@ -227,13 +227,29 @@ function RootComponent() {
       .catch((err) => setPasswordChangeError(err.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ'));
   };
 
+  const isNavActive = (to: string) => {
+    const pathname = location.pathname;
+    return pathname === to || pathname.startsWith(`${to}/`);
+  };
+
+  const navLinkClass = (to: string, collapsed: boolean) => {
+    const active = isNavActive(to);
+    return [
+      'flex w-full items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all shrink-0 border-l-2',
+      collapsed ? 'lg:justify-center lg:px-2' : '',
+      active
+        ? 'bg-indigo-500/25 text-indigo-300 border-indigo-400 font-semibold shadow-[inset_0_0_12px_rgba(99,102,241,0.12)]'
+        : 'text-slate-400 border-transparent hover:bg-slate-800/40 hover:text-slate-200',
+    ].join(' ');
+  };
+
   const renderSidebarNav = (collapsed: boolean, onNavigate: () => void) => (
     <nav className={`p-3 lg:p-4 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden lg:max-h-[calc(100vh-170px)] ${collapsed ? 'lg:flex lg:flex-col lg:gap-1.5' : 'lg:block'}`}>
       <Link
         to="/dashboard"
-        activeProps={{ className: 'bg-indigo-600/20 text-indigo-400 border-l-2 border-indigo-500' }}
+        aria-current={isNavActive('/dashboard') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/dashboard', collapsed)}
       >
         <LayoutDashboard size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>แผงควบคุม (Dashboard)</span>
@@ -241,8 +257,9 @@ function RootComponent() {
 
       <Link
         to="/leads"
+        aria-current={isNavActive('/leads') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/leads', collapsed)}
       >
         <Users size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>Leads & โรงเรียน</span>
@@ -250,8 +267,9 @@ function RootComponent() {
 
       <Link
         to="/pipeline"
+        aria-current={isNavActive('/pipeline') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/pipeline', collapsed)}
       >
         <TrendingUp size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>Opportunity Pipeline</span>
@@ -259,8 +277,9 @@ function RootComponent() {
 
       <Link
         to="/tasks"
+        aria-current={isNavActive('/tasks') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/tasks', collapsed)}
       >
         <CheckCircle2 size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>งาน & นัดหมาย</span>
@@ -268,8 +287,9 @@ function RootComponent() {
 
       <Link
         to="/activities"
+        aria-current={isNavActive('/activities') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/activities', collapsed)}
       >
         <Activity size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>กิจกรรม & ติดตามงาน</span>
@@ -277,8 +297,9 @@ function RootComponent() {
 
       <Link
         to="/calendar"
+        aria-current={isNavActive('/calendar') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/calendar', collapsed)}
       >
         <Calendar size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>ปฏิทินกลาง</span>
@@ -287,8 +308,9 @@ function RootComponent() {
       {hasAccess([2, 4, 5]) && (
         <Link
           to="/admin-calendar"
+          aria-current={isNavActive('/admin-calendar') ? 'page' : undefined}
           onClick={onNavigate}
-          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          className={navLinkClass('/admin-calendar', collapsed)}
         >
           <Calendar size={18} />
           <span className={collapsed ? 'lg:hidden' : ''}>Admin Calendar</span>
@@ -298,8 +320,9 @@ function RootComponent() {
       {hasAccess([3, 4, 5]) && (
         <Link
           to="/ai-logger"
+          aria-current={isNavActive('/ai-logger') ? 'page' : undefined}
           onClick={onNavigate}
-          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          className={navLinkClass('/ai-logger', collapsed)}
         >
           <MessageSquareCode size={18} />
           <span className={collapsed ? 'lg:hidden' : ''}>AI บันทึกด้วยการคุย</span>
@@ -309,8 +332,9 @@ function RootComponent() {
       {hasAccess([4, 5]) && (
         <Link
           to="/team-overview"
+          aria-current={isNavActive('/team-overview') ? 'page' : undefined}
           onClick={onNavigate}
-          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          className={navLinkClass('/team-overview', collapsed)}
         >
           <Users2 size={18} />
           <span className={collapsed ? 'lg:hidden' : ''}>ภาพรวมทีม</span>
@@ -319,48 +343,49 @@ function RootComponent() {
 
       <Link
         to="/reports"
+        aria-current={isNavActive('/reports') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/reports', collapsed)}
       >
         <FileText size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>รายงานกิจกรรม</span>
       </Link>
 
-      {hasAccess([4, 5]) && (
-        <>
-          <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">จัดการระบบ</div>
-          <Link
-            to="/products"
-            onClick={onNavigate}
-            className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
-          >
-            <Briefcase size={18} />
-            <span className={collapsed ? 'lg:hidden' : ''}>สินค้า & ราคา</span>
-          </Link>
-          <Link
-            to="/discount-settings"
-            onClick={onNavigate}
-            className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
-          >
-            <Sliders size={18} />
-            <span className={collapsed ? 'lg:hidden' : ''}>ตั้งค่าส่วนลด</span>
-          </Link>
-          <Link
-            to="/activity-types"
-            onClick={onNavigate}
-            className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
-          >
-            <ListTree size={18} />
-            <span className={collapsed ? 'lg:hidden' : ''}>ประเภทกิจกรรม</span>
-          </Link>
-        </>
-      )}
+      <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">จัดการระบบ</div>
+      <Link
+        to="/products"
+        aria-current={isNavActive('/products') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/products', collapsed)}
+      >
+        <Briefcase size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>สินค้า & ราคา</span>
+      </Link>
+      <Link
+        to="/discount-settings"
+        aria-current={isNavActive('/discount-settings') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/discount-settings', collapsed)}
+      >
+        <Sliders size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>ตั้งค่าส่วนลด</span>
+      </Link>
+      <Link
+        to="/activity-types"
+        aria-current={isNavActive('/activity-types') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/activity-types', collapsed)}
+      >
+        <ListTree size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>ประเภทกิจกรรม</span>
+      </Link>
 
       {hasAccess([4, 5]) && (
         <Link
           to="/admin"
+          aria-current={isNavActive('/admin') ? 'page' : undefined}
           onClick={onNavigate}
-          className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+          className={navLinkClass('/admin', collapsed)}
         >
           <Settings size={18} />
           <span className={collapsed ? 'lg:hidden' : ''}>จัดการ Users & Roles</span>
@@ -370,8 +395,9 @@ function RootComponent() {
       <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">ธุรกรรม & คำขอ</div>
       <Link
         to="/quotes"
+        aria-current={isNavActive('/quotes') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/quotes', collapsed)}
       >
         <DollarSign size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>ใบเสนอราคา</span>
@@ -379,8 +405,9 @@ function RootComponent() {
       </Link>
       <Link
         to="/requests"
+        aria-current={isNavActive('/requests') ? 'page' : undefined}
         onClick={onNavigate}
-        className={`flex w-full items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 rounded-lg text-sm transition-all shrink-0 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
+        className={navLinkClass('/requests', collapsed)}
       >
         <FolderHeart size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>ระบบคำขอ (Requests)</span>

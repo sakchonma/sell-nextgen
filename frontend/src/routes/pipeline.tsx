@@ -277,15 +277,16 @@ function PipelineComponent() {
         ))}
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4 items-start select-none">
+      <div className={stageFilter === 'All' ? 'flex gap-4 overflow-x-auto pb-4 items-start select-none' : 'w-full'}>
         {visibleStages.map(stage => {
           const stageLeads = pipelineLeads.filter(lead => resolveLeadStage(lead) === stage.id);
+          const singleStageView = stageFilter !== 'All';
           return (
             <div
               key={stage.id}
               onDragOver={e => canManagePipeline && e.preventDefault()}
               onDrop={() => handleDrop(stage.id)}
-              className="w-80 shrink-0 p-4 rounded-2xl bg-[#121826]/40 border border-slate-800 space-y-4 min-h-[420px]"
+              className={`${singleStageView ? 'w-full' : 'w-80 shrink-0'} p-4 rounded-2xl bg-[#121826]/40 border border-slate-800 space-y-4 min-h-[420px]`}
             >
               <div className={`p-3 rounded-xl border flex flex-col gap-1 ${stage.color}`}>
                 <span className="text-[10.5px] font-black uppercase tracking-wider block">{stage.label}</span>
@@ -295,7 +296,7 @@ function PipelineComponent() {
                 </div>
               </div>
 
-              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              <div className={singleStageView ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3' : 'space-y-3 max-h-[60vh] overflow-y-auto pr-1'}>
                 {stageLeads.map(lead => {
                   const opp = oppByLeadId.get(lead._id);
                   const value = resolveLeadPipelineValue(lead._id, stage.id as any, opportunities, quotes);
@@ -351,7 +352,7 @@ function PipelineComponent() {
                   );
                 })}
                 {stageLeads.length === 0 && (
-                  <div className="py-12 border border-dashed border-slate-800 rounded-xl text-center text-slate-500 text-[10.5px]">
+                  <div className="col-span-full py-12 border border-dashed border-slate-800 rounded-xl text-center text-slate-500 text-[10.5px]">
                     {canManagePipeline ? 'ลาก Lead มาวางในระยะนี้ได้' : 'ยังไม่มี Lead ในสถานะนี้'}
                   </div>
                 )}

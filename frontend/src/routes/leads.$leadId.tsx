@@ -15,12 +15,14 @@ import {
   Repeat2,
   Paperclip,
   Save,
-  MessageSquare
+  MessageSquare,
+  CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useActivityTypes } from '../hooks/useActivityTypes';
 import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
+import { ModalShell } from '../components/ui';
 import {
   APPOINTMENT_KIND_OPTIONS,
   DOCUMENT_CHANNEL_OPTIONS,
@@ -103,6 +105,8 @@ function LeadDetailComponent() {
     campaign: ''
   });
   const [showAddContact, setShowAddContact] = useState(false);
+  const [showSaveOk, setShowSaveOk] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
 
   const fetchLeadDetail = () => {
     apiFetch(`/api/leads/${leadId}`)
@@ -214,8 +218,14 @@ function LeadDetailComponent() {
       .then(data => {
         setLead(data);
         fetchActivity();
+        setSaveMessage('บันทึกเรียบร้อย');
+        setShowSaveOk(true);
       })
-      .catch(err => console.error('Failed to save lead profile:', err));
+      .catch(err => {
+        console.error('Failed to save lead profile:', err);
+        setSaveMessage(err?.message || 'บันทึกไม่สำเร็จ');
+        setShowSaveOk(true);
+      });
   };
 
   const handleAddRemark = (e: React.FormEvent) => {
@@ -952,6 +962,24 @@ function LeadDetailComponent() {
             </form>
           </div>
         </div>
+      )}
+
+      {showSaveOk && (
+        <ModalShell>
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center space-y-4">
+            <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center ${saveMessage === 'บันทึกเรียบร้อย' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
+              <CheckCircle2 size={24} />
+            </div>
+            <h3 className="text-base font-semibold text-slate-100">{saveMessage}</h3>
+            <button
+              type="button"
+              onClick={() => setShowSaveOk(false)}
+              className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold text-white"
+            >
+              OK
+            </button>
+          </div>
+        </ModalShell>
       )}
     </div>
   );
