@@ -454,7 +454,7 @@ function LeadsIndexComponent() {
         <ModalShell>
           <form onSubmit={wrapFormSubmit(handleAddLead)} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <h3 className="text-base font-semibold text-slate-100">เพิ่มลีดโรงเรียนเป้าหมายใหม่</h3>
-            {leadError && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{leadError}</div>}
+            {leadError && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 whitespace-pre-line">{leadError}</div>}
 
             <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-[#090d16] cursor-pointer">
               <input

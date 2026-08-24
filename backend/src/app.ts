@@ -1018,7 +1018,12 @@ function buildAILogDescription(body: any, lead: any): string {
 }
 
 function normalizeDuplicateKey(value?: string) {
-  return (value || '').toLowerCase().replace(/^โรงเรียน/, '').replace(/\s+/g, '').trim();
+  return (value || '')
+    .toLowerCase()
+    .replace(/^โรงเรียน/, '')
+    .replace(/^รร\.?/, '')
+    .replace(/\s+/g, '')
+    .trim();
 }
 
 function normalizePhone(value?: string) {
@@ -1051,7 +1056,34 @@ function findLeadDuplicates(leads: any[], candidate: any, excludeId?: string) {
         return (phone && phones.has(phone)) || (email && emails.has(email));
       });
     })
-    .map(lead => ({ _id: lead._id, schoolName: lead.schoolName, zone: lead.zone, status: lead.status }));
+    .map(lead => ({ _id: lead._id, schoolName: lead.schoolName, zone: lead.zone, status: lead.status, assignedTo: lead.assignedTo }));
+}
+
+async function decorateLeadDuplicates(duplicates: any[], currentUser: any) {
+  if (!duplicates.length) return [];
+  const users = await findAll<any>(Users());
+  const userMap = new Map(users.map((item: any) => [item._id, item]));
+  const leads = await findAll<any>(Leads());
+  const leadMap = new Map(leads.map((item: any) => [item._id, item]));
+  return duplicates.map(item => {
+    const lead = leadMap.get(item._id);
+    const owner = userMap.get(item.assignedTo || lead?.assignedTo);
+    const visible = userCanSeeLead(currentUser, lead || item);
+    return {
+      ...item,
+      assignedToName: owner?.name || lead?.legacySaleName || '',
+      visible
+    };
+  });
+}
+
+function formatDuplicateConflictMessage(duplicates: any[]) {
+  const summary = duplicates.map(item => {
+    const owner = item.assignedToName || 'ไม่ระบุผู้ดูแล';
+    const hidden = item.visible ? '' : ' · ไม่ขึ้นในลิสต์ของคุณ (คนละผู้ดูแล/โซน)';
+    return `${item.schoolName} (${item.zone || '-'} · ${owner}${hidden})`;
+  }).join(' | ');
+  return `พบข้อมูลโรงเรียนหรือผู้ติดต่อซ้ำในระบบ: ${summary}`;
 }
 
 function hydrateLeadForResponse(lead: any) {
@@ -2083,11 +2115,15 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
   leadsArray = leadsArray.filter(lead => {
     if (includeArchived !== 'true' && lead.archived) return false;
     if (searchText) {
-      const haystack = [lead.schoolName, lead.address, lead.zone, lead.source, lead.campaign]
+      const compactSearch = normalizeDuplicateKey(searchText);
+      const haystack = [lead.schoolName, lead.address, lead.zone, lead.source, lead.campaign, lead.district, lead.province]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
-      if (!haystack.includes(searchText)) return false;
+      const compactName = normalizeDuplicateKey(lead.schoolName);
+      const matched = haystack.includes(searchText)
+        || (compactSearch && compactName.includes(compactSearch));
+      if (!matched) return false;
     }
     if (zone !== 'All' && lead.zone !== zone) return false;
     if (status !== 'All' && lead.status !== status) return false;
@@ -2348,9 +2384,12 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     contacts,
     attachments
   } = req.body;
-  const duplicateLeads = findLeadDuplicates(await findAll<any>(Leads()), { schoolName, contacts });
+  const duplicateLeads = await decorateLeadDuplicates(
+    findLeadDuplicates(await findAll<any>(Leads()), { schoolName, contacts }),
+    currentUser
+  );
   if (duplicateLeads.length > 0) {
-    res.status(409).json({ message: 'พบข้อมูลโรงเรียนหรือผู้ติดต่อซ้ำในระบบ', duplicates: duplicateLeads });
+    res.status(409).json({ message: formatDuplicateConflictMessage(duplicateLeads), duplicates: duplicateLeads });
     return;
   }
   const ownerId = assignedTo || currentUser._id;
@@ -2455,9 +2494,12 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     return;
   }
   if (contacts) {
-    const duplicateLeads = findLeadDuplicates(await findAll<any>(Leads()), { schoolName: lead.schoolName, contacts }, lead._id);
+    const duplicateLeads = await decorateLeadDuplicates(
+      findLeadDuplicates(await findAll<any>(Leads()), { schoolName: lead.schoolName, contacts }, lead._id),
+      currentUser
+    );
     if (duplicateLeads.length > 0) {
-      res.status(409).json({ message: 'พบข้อมูลผู้ติดต่อซ้ำในระบบ', duplicates: duplicateLeads });
+      res.status(409).json({ message: formatDuplicateConflictMessage(duplicateLeads), duplicates: duplicateLeads });
       return;
     }
   }
