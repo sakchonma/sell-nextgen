@@ -31,7 +31,9 @@ import {
   syncTaskAfterUpdate,
   syncTaskCompletedToLead,
   syncTaskToLead,
-  logActivity
+  logActivity,
+  markTaskFollowUpUpdated,
+  markLeadFollowUpsUpdated
 } from './services/activity-sync.service.js';
 import {
   createActivityType,
@@ -2590,6 +2592,9 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
   }
 
   await syncLeadAfterUpdate(lead, updatedLead, currentUser._id, notes || undefined);
+  if (notes?.length || remarkLogs?.length) {
+    await markLeadFollowUpsUpdated(lead._id);
+  }
   if (updatedLead.stage !== previousStage) {
     await syncLeadStageToOpportunity(updatedLead as any, previousStage, currentUser._id, transferReason);
   }
@@ -3054,7 +3059,11 @@ app.get('/api/activities', requirePermission('manageTasks'), async (req, res) =>
       leadId: task.leadId,
       schoolName: task.leadId ? leadMap.get(task.leadId)?.schoolName : undefined,
       reminderAt: task.reminderAt,
-      overdue: task.status !== 'Completed' && asDate(task.endAt).getTime() < now
+      overdue: task.status !== 'Completed' && asDate(task.endAt).getTime() < now,
+      followUpUpdated: Boolean(task.followUpUpdatedAt) || (Array.isArray(task.comments) && task.comments.length > 0) || task.status === 'Completed',
+      lastFollowUpNote: Array.isArray(task.comments) && task.comments.length
+        ? task.comments[task.comments.length - 1].content
+        : undefined
     }));
 
   res.json({ feed, upcoming });
@@ -3082,6 +3091,7 @@ app.post('/api/activities/log', requirePermission('manageTasks'), validateBody(l
       creatorId: currentUser._id,
       authorName: currentUser.name
     });
+    await markLeadFollowUpsUpdated(req.body.leadId);
     res.status(201).json(result);
   } catch (err: any) {
     res.status(400).json({ message: err.message || 'บันทึกกิจกรรมไม่สำเร็จ' });
@@ -3287,6 +3297,7 @@ app.put('/api/tasks/:id', requirePermission('manageTasks'), validateBody(updateT
     endAt: end,
     participants,
     reminderAt: req.body.reminderMinutesBefore !== undefined ? calculateReminderAt(start, req.body.reminderMinutesBefore) : task.reminderAt,
+    followUpUpdatedAt: new Date(),
     updatedAt: new Date()
   };
   delete (updatedTask as any).participantIds;
@@ -3375,7 +3386,7 @@ app.put('/api/tasks/:id/complete', requirePermission('manageTasks'), async (req,
     res.status(404).json({ message: 'ไม่พบนัดหมายตารางงาน' });
     return;
   }
-  const updatedTask = { ...task, status: 'Completed', updatedAt: new Date() };
+  const updatedTask = { ...task, status: 'Completed', followUpUpdatedAt: new Date(), updatedAt: new Date() };
   await (tasksColl as any).updateOne({ _id: req.params.id }, { $set: updatedTask });
   await createAuditLog(req, currentUser, 'task.complete', 'task', updatedTask);
   await syncTaskCompletedToLead(updatedTask);
@@ -3446,7 +3457,7 @@ app.post('/api/tasks/:id/comments', requirePermission('manageTasks'), validateBo
   }
 
   const isParticipant = task.creatorId === currentUser._id || task.participants?.some((p: any) => p.userId === currentUser._id);
-  if (!isParticipant && currentUser.rank < 4) {
+  if (!isParticipant && currentUser.rank < 3) {
     res.status(403).json({ message: 'ไม่มีสิทธิ์คอมเมนต์งานนี้' });
     return;
   }
@@ -3458,9 +3469,10 @@ app.post('/api/tasks/:id/comments', requirePermission('manageTasks'), validateBo
     createdAt: new Date()
   };
   const comments = [...(task.comments || []), comment];
-  const updatedTask = { ...task, comments, updatedAt: new Date() };
+  const followUpUpdatedAt = new Date();
+  const updatedTask = { ...task, comments, followUpUpdatedAt, updatedAt: followUpUpdatedAt };
 
-  await (tasksColl as any).updateOne({ _id: req.params.id }, { $set: { comments, updatedAt: updatedTask.updatedAt } });
+  await (tasksColl as any).updateOne({ _id: req.params.id }, { $set: { comments, followUpUpdatedAt, updatedAt: followUpUpdatedAt } });
   res.status(201).json(updatedTask);
 });
 

@@ -151,6 +151,7 @@ export interface Task {
   reminderAt?: Date;
   reminderMinutesBefore?: number;
   reminderSentAt?: Date;
+  followUpUpdatedAt?: Date;
   sourceRef?: { type: string; leadId?: string; noteKey?: string };
   recurrenceId?: string;
   recurrenceRule?: 'none' | 'daily' | 'weekly' | 'monthly';

@@ -159,6 +159,30 @@ export async function syncLeadNextCallAt(lead: Lead, creatorId: string) {
   await upsertTask(taskPayload);
 }
 
+export async function markTaskFollowUpUpdated(taskId: string) {
+  if (!taskId) return;
+  const coll = Tasks();
+  const task = await coll.findOne({ _id: taskId } as any);
+  if (!task) return;
+  const now = new Date();
+  const patch = { followUpUpdatedAt: now, updatedAt: now };
+  if ('updateOne' in coll && !(coll instanceof MemoryCollection)) {
+    await (coll as any).updateOne({ _id: taskId }, { $set: patch });
+  } else {
+    const idx = (MemoryStore as any).tasks?.findIndex((item: any) => item._id === taskId);
+    if (idx !== -1) (MemoryStore as any).tasks[idx] = { ...task, ...patch };
+  }
+}
+
+export async function markLeadFollowUpsUpdated(leadId: string) {
+  if (!leadId) return;
+  const tasks = await findAll<any>(Tasks(), { leadId });
+  for (const task of tasks) {
+    if (task.status === 'Completed') continue;
+    await markTaskFollowUpUpdated(task._id);
+  }
+}
+
 export async function syncLeadNotesAdded(lead: Lead, newNotes: any[], creatorId: string) {
   for (const note of newNotes) {
     const type = note.type || 'General';
