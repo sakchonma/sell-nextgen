@@ -3038,7 +3038,6 @@ app.get('/api/activities', requirePermission('manageTasks'), async (req, res) =>
 
   const now = Date.now();
   const upcoming = visibleTasks
-    .filter(task => task.status !== 'Completed')
     .filter(task => {
       const start = asDate(task.startAt).getTime();
       const sevenDays = 7 * 24 * 60 * 60 * 1000;
@@ -3055,7 +3054,7 @@ app.get('/api/activities', requirePermission('manageTasks'), async (req, res) =>
       leadId: task.leadId,
       schoolName: task.leadId ? leadMap.get(task.leadId)?.schoolName : undefined,
       reminderAt: task.reminderAt,
-      overdue: asDate(task.endAt).getTime() < now
+      overdue: task.status !== 'Completed' && asDate(task.endAt).getTime() < now
     }));
 
   res.json({ feed, upcoming });

@@ -114,6 +114,26 @@ function ActivitiesComponent() {
     return <Activity size={12} />;
   };
 
+  const upcomingBoxClass = (item: any) => {
+    if (item.status === 'Completed') return 'border-emerald-600 bg-emerald-200';
+    if (item.overdue) return 'border-rose-500 bg-rose-200';
+    return 'border-slate-800 bg-[#090d16]/30';
+  };
+
+  const upcomingTextClass = (item: any) => (
+    item.status === 'Completed' || item.overdue ? 'text-slate-900' : 'text-slate-200'
+  );
+
+  const upcomingMetaClass = (item: any) => (
+    item.status === 'Completed' || item.overdue ? 'text-slate-800' : 'text-slate-500'
+  );
+
+  const upcomingStatusLabel = (item: any) => {
+    if (item.status === 'Completed') return 'อัปเดตแล้ว';
+    if (item.overdue) return 'เลยกำหนด';
+    return 'รอดำเนินการ';
+  };
+
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -219,20 +239,25 @@ function ActivitiesComponent() {
             ) : (
               <div className="space-y-2">
                 {upcoming.map(item => (
-                  <div key={item._id} className={`p-3 rounded-xl border ${item.overdue ? 'border-rose-500/25 bg-rose-500/10' : 'border-slate-800 bg-[#090d16]/30'}`}>
+                  <div key={item._id} className={`p-3 rounded-xl border ${upcomingBoxClass(item)}`}>
                     <div className="flex justify-between gap-3">
                       <div>
-                        <span className="text-[9px] font-bold uppercase text-indigo-300">{item.type}</span>
-                        <h4 className="text-sm font-semibold text-slate-200">{item.title}</h4>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] font-bold uppercase ${item.status === 'Completed' ? 'text-emerald-800' : 'text-indigo-700'}`}>{item.type}</span>
+                          <span className={`text-[9px] font-bold ${item.status === 'Completed' ? 'text-emerald-800' : item.overdue ? 'text-rose-800' : 'text-slate-400'}`}>
+                            {upcomingStatusLabel(item)}
+                          </span>
+                        </div>
+                        <h4 className={`text-sm font-semibold ${upcomingTextClass(item)}`}>{item.title}</h4>
                         {item.schoolName && (
-                          <Link to="/leads/$leadId" params={{ leadId: item.leadId }} className="text-[10px] text-slate-500 hover:text-indigo-300">
+                          <Link to="/leads/$leadId" params={{ leadId: item.leadId }} className={`text-[10px] hover:underline ${upcomingMetaClass(item)}`}>
                             {item.schoolName}
                           </Link>
                         )}
                       </div>
-                      <div className="text-right text-[10px] text-slate-500 shrink-0">
+                      <div className={`text-right text-[10px] shrink-0 ${upcomingMetaClass(item)}`}>
                         <span className="flex items-center gap-1 justify-end"><Clock size={10} /> {new Date(item.startAt).toLocaleString('th-TH')}</span>
-                        {item.reminderAt && <span className="block mt-1 text-amber-300">เตือน: {new Date(item.reminderAt).toLocaleString('th-TH')}</span>}
+                        {item.reminderAt && <span className={`block mt-1 font-semibold ${item.status === 'Completed' ? 'text-emerald-900' : 'text-amber-800'}`}>เตือน: {new Date(item.reminderAt).toLocaleString('th-TH')}</span>}
                       </div>
                     </div>
                   </div>
