@@ -174,6 +174,27 @@ export async function markTaskFollowUpUpdated(taskId: string) {
   }
 }
 
+type LeadNoteType = NonNullable<Lead['notes'][number]['type']>;
+
+export async function appendLeadNote(
+  leadId: string,
+  note: { author: string; content: string; type?: LeadNoteType; createdAt?: Date },
+  creatorId: string
+) {
+  const coll = Leads();
+  const lead = await coll.findOne({ _id: leadId } as any) as Lead | null;
+  if (!lead) return;
+  const nextNote: Lead['notes'][number] = {
+    author: note.author,
+    content: note.content,
+    type: note.type || 'General',
+    createdAt: note.createdAt || new Date(),
+  };
+  const notes = [...(lead.notes || []), nextNote];
+  await updateLeadRecord(leadId, { notes });
+  await syncLeadNotesAdded({ ...lead, notes }, [nextNote], creatorId);
+}
+
 export async function markLeadFollowUpsUpdated(leadId: string) {
   if (!leadId) return;
   const tasks = await findAll<any>(Tasks(), { leadId });

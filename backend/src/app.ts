@@ -33,7 +33,8 @@ import {
   syncTaskToLead,
   logActivity,
   markTaskFollowUpUpdated,
-  markLeadFollowUpsUpdated
+  markLeadFollowUpsUpdated,
+  appendLeadNote
 } from './services/activity-sync.service.js';
 import {
   createActivityType,
@@ -3473,6 +3474,14 @@ app.post('/api/tasks/:id/comments', requirePermission('manageTasks'), validateBo
   const updatedTask = { ...task, comments, followUpUpdatedAt, updatedAt: followUpUpdatedAt };
 
   await (tasksColl as any).updateOne({ _id: req.params.id }, { $set: { comments, followUpUpdatedAt, updatedAt: followUpUpdatedAt } });
+  if (task.leadId) {
+    await appendLeadNote(task.leadId, {
+      author: currentUser.name,
+      content: comment.content,
+      type: 'General',
+      createdAt: comment.createdAt
+    }, currentUser._id);
+  }
   res.status(201).json(updatedTask);
 });
 
