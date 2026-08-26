@@ -6,15 +6,12 @@ import { Activity, Bell, Clock, Phone, Mail, Users, RefreshCw } from 'lucide-rea
 import { apiFetch, apiJson } from '../lib/api';
 import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { useActivityTypes } from '../hooks/useActivityTypes';
-import { ModalShell } from '../components/ui';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/activities',
   component: ActivitiesComponent,
 });
-
-const FOLLOW_UP_PRESETS = ['โทรหาใหม่ พรุ่งนี้', 'ไม่รับสาย', 'ไม่สนใจ'];
 
 const REMINDER_OPTIONS = [
   { label: 'ไม่เตือน', value: 0 },
@@ -35,9 +32,6 @@ function ActivitiesComponent() {
   const [error, setError] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
-  const [followUpTask, setFollowUpTask] = useState<any>(null);
-  const [followUpNote, setFollowUpNote] = useState('');
-  const [followUpSaving, setFollowUpSaving] = useState(false);
   const [form, setForm] = useState({
     leadId: '',
     type: 'Call',
@@ -111,24 +105,6 @@ function ActivitiesComponent() {
       })
       .catch(err => setError(err.message || 'บันทึกกิจกรรมไม่สำเร็จ'))
       .finally(() => setSaving(false));
-  };
-
-  const handleFollowUpSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!followUpTask || !followUpNote.trim()) {
-      setError('กรุณาระบุรายละเอียดการอัปเดต');
-      return;
-    }
-    setFollowUpSaving(true);
-    setError('');
-    apiJson(`/api/tasks/${followUpTask._id}/comments`, { content: followUpNote.trim() })
-      .then(() => {
-        setFollowUpTask(null);
-        setFollowUpNote('');
-        fetchData();
-      })
-      .catch(err => setError(err.message || 'บันทึกการอัปเดตไม่สำเร็จ'))
-      .finally(() => setFollowUpSaving(false));
   };
 
   const typeIcon = (type: string) => {
@@ -262,17 +238,9 @@ function ActivitiesComponent() {
               <div className="text-xs text-slate-500 py-6 text-center">ไม่มีงานที่ต้องติดตามในช่วงนี้</div>
             ) : (
               <div className="space-y-2">
-                {upcoming.map(item => (
-                  <button
-                    key={item._id}
-                    type="button"
-                    onClick={() => {
-                      setFollowUpTask(item);
-                      setFollowUpNote(item.lastFollowUpNote || '');
-                      setError('');
-                    }}
-                    className={`w-full p-3 rounded-xl border text-left ${upcomingBoxClass(item)}`}
-                  >
+                {upcoming.map(item => {
+                  const boxClass = `w-full p-3 rounded-xl border text-left ${upcomingBoxClass(item)}`;
+                  const body = (
                     <div className="flex justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
@@ -294,8 +262,21 @@ function ActivitiesComponent() {
                         {item.reminderAt && <span className={`block mt-1 font-semibold ${item.followUpUpdated || item.status === 'Completed' ? 'text-emerald-900' : 'text-amber-800'}`}>เตือน: {new Date(item.reminderAt).toLocaleString('th-TH')}</span>}
                       </div>
                     </div>
-                  </button>
-                ))}
+                  );
+                  if (!item.leadId) {
+                    return <div key={item._id} className={boxClass}>{body}</div>;
+                  }
+                  return (
+                    <Link
+                      key={item._id}
+                      to="/leads/$leadId"
+                      params={{ leadId: item.leadId }}
+                      className={`${boxClass} block hover:brightness-95`}
+                    >
+                      {body}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -332,43 +313,6 @@ function ActivitiesComponent() {
           </div>
         </div>
       </div>
-
-      {followUpTask && (
-        <ModalShell>
-          <form onSubmit={wrapFormSubmit(handleFollowUpSave)} className="w-96 max-w-[calc(100vw-2rem)] shrink-0 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-100">อัปเดตงานติดตาม</h3>
-              <p className="text-xs text-slate-400 mt-1">{followUpTask.title}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {FOLLOW_UP_PRESETS.map(preset => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setFollowUpNote(preset)}
-                  className={`px-3 py-1.5 rounded-lg border text-[10px] font-semibold ${followUpNote === preset ? 'border-indigo-500 bg-indigo-500/15 text-indigo-200' : 'border-slate-800 text-slate-300 hover:bg-slate-800'}`}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={followUpNote}
-              onChange={e => setFollowUpNote(e.target.value)}
-              rows={3}
-              required
-              placeholder="เช่น โทรหาใหม่ พรุ่งนี้ / ไม่รับสาย / ไม่สนใจ"
-              className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200"
-            />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => { setFollowUpTask(null); setFollowUpNote(''); }} className="px-4 py-2 rounded-lg border border-slate-800 text-xs font-semibold text-slate-300">ยกเลิก</button>
-              <button type="submit" disabled={followUpSaving} className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white disabled:opacity-50">
-                {followUpSaving ? 'กำลังบันทึก...' : 'บันทึก'}
-              </button>
-            </div>
-          </form>
-        </ModalShell>
-      )}
     </div>
   );
 }
