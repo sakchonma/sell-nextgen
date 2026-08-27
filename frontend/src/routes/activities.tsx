@@ -21,6 +21,23 @@ const REMINDER_OPTIONS = [
   { label: '1 วัน', value: 1440 },
 ];
 
+function startOfLocalDay(value: string | Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function hasReachedScheduledDay(startAt?: string | Date) {
+  if (!startAt) return false;
+  const start = new Date(startAt);
+  if (Number.isNaN(start.getTime())) return false;
+  return startOfLocalDay(new Date()) >= startOfLocalDay(start);
+}
+
+function isFollowUpGreen(item: any) {
+  return (item.followUpUpdated || item.status === 'Completed') && hasReachedScheduledDay(item.startAt);
+}
+
 function ActivitiesComponent() {
   const { user } = useAuth();
   const { selectOptions: logTypeOptions } = useActivityTypes('log');
@@ -115,21 +132,21 @@ function ActivitiesComponent() {
   };
 
   const upcomingBoxClass = (item: any) => {
-    if (item.followUpUpdated || item.status === 'Completed') return 'border-emerald-600 bg-emerald-200';
+    if (isFollowUpGreen(item)) return 'border-emerald-600 bg-emerald-200';
     if (item.overdue) return 'border-rose-500 bg-rose-200';
     return 'border-slate-800 bg-[#090d16]/30';
   };
 
   const upcomingTextClass = (item: any) => (
-    item.followUpUpdated || item.status === 'Completed' || item.overdue ? 'text-slate-900' : 'text-slate-200'
+    isFollowUpGreen(item) || item.overdue ? 'text-slate-900' : 'text-slate-200'
   );
 
   const upcomingMetaClass = (item: any) => (
-    item.followUpUpdated || item.status === 'Completed' || item.overdue ? 'text-slate-800' : 'text-slate-500'
+    isFollowUpGreen(item) || item.overdue ? 'text-slate-800' : 'text-slate-500'
   );
 
   const upcomingStatusLabel = (item: any) => {
-    if (item.followUpUpdated || item.status === 'Completed') return 'อัปเดตแล้ว';
+    if (isFollowUpGreen(item)) return 'อัปเดตแล้ว';
     if (item.overdue) return 'เลยกำหนด';
     return 'รอดำเนินการ';
   };
@@ -244,8 +261,8 @@ function ActivitiesComponent() {
                     <div className="flex justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[9px] font-bold uppercase ${item.followUpUpdated || item.status === 'Completed' ? 'text-emerald-800' : 'text-indigo-700'}`}>{item.type}</span>
-                          <span className={`text-[9px] font-bold ${item.followUpUpdated || item.status === 'Completed' ? 'text-emerald-800' : item.overdue ? 'text-rose-800' : 'text-slate-400'}`}>
+                          <span className={`text-[9px] font-bold uppercase ${isFollowUpGreen(item) ? 'text-emerald-800' : 'text-indigo-700'}`}>{item.type}</span>
+                          <span className={`text-[9px] font-bold ${isFollowUpGreen(item) ? 'text-emerald-800' : item.overdue ? 'text-rose-800' : 'text-slate-400'}`}>
                             {upcomingStatusLabel(item)}
                           </span>
                         </div>
@@ -259,7 +276,7 @@ function ActivitiesComponent() {
                       </div>
                       <div className={`text-right text-[10px] shrink-0 ${upcomingMetaClass(item)}`}>
                         <span className="flex items-center gap-1 justify-end"><Clock size={10} /> {new Date(item.startAt).toLocaleString('th-TH')}</span>
-                        {item.reminderAt && <span className={`block mt-1 font-semibold ${item.followUpUpdated || item.status === 'Completed' ? 'text-emerald-900' : 'text-amber-800'}`}>เตือน: {new Date(item.reminderAt).toLocaleString('th-TH')}</span>}
+                        {item.reminderAt && <span className={`block mt-1 font-semibold ${isFollowUpGreen(item) ? 'text-emerald-900' : 'text-amber-800'}`}>เตือน: {new Date(item.reminderAt).toLocaleString('th-TH')}</span>}
                       </div>
                     </div>
                   );
