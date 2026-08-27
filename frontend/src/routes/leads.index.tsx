@@ -17,7 +17,7 @@ import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { ModalShell } from '../components/ui';
 import { FuzzySearchSelect } from '../components/fuzzy-search-select';
 import { provinceToZone } from '../lib/province-zone';
-import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle, stageRequiresEventAt, temperatureFromStage, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
+import { SALES_FUNNEL_STAGE_OPTIONS, getSalesFunnelStageStyle, stageRequiresEventAt, getStageEventAtLabel, temperatureFromStage, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
 const ZONE_OPTIONS = ['ภาคเหนือ', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคใต้', 'ภาคตะวันตก', 'ภาคอีสาน'];
 const LEADS_PAGE_SIZE = 20;
@@ -596,7 +596,7 @@ function LeadsIndexComponent() {
             )}
             {stageRequiresEventAt(pendingStage.stage) && (
               <label className="block text-xs text-slate-400 font-semibold">
-                วันเวลา
+                {getStageEventAtLabel(pendingStage.stage)}
                 <input type="datetime-local" required value={stageEventAt} onChange={e => setStageEventAt(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
               </label>
             )}

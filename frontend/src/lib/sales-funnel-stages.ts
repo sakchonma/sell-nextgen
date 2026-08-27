@@ -98,6 +98,21 @@ export function stageRequiresEventAt(stage: string) {
   return stage === 'Appointed' || stage === 'Presented' || stage === 'DemoWorkshop';
 }
 
+export function getStageEventAtLabel(stage: string) {
+  const normalized = normalizeLeadStage(stage);
+  if (normalized === 'Appointed') return 'วันที่ที่จะไปพบ';
+  if (normalized === 'Presented') return 'วันที่ที่พรีเซนต์เรียบร้อยแล้ว';
+  if (normalized === 'DemoWorkshop') return 'วันที่ Demo/Workshop';
+  return 'วันเวลานัด';
+}
+
+export function formatThaiDate(value?: string | Date | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('th-TH');
+}
+
 export function temperatureFromStage(stage: string): 'Cold' | 'Warm' | 'Hot' | 'Customer' {
   const normalized = normalizeLeadStage(stage);
   if (normalized === 'Presented') return 'Warm';

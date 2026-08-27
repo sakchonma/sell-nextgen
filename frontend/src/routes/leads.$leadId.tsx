@@ -30,6 +30,7 @@ import {
   APPOINTMENT_KIND_OPTIONS,
   DOCUMENT_CHANNEL_OPTIONS,
   SALES_FUNNEL_STAGE_OPTIONS,
+  getStageEventAtLabel,
   stageRequiresEventAt,
   temperatureFromStage,
 } from '../lib/sales-funnel-stages';
@@ -771,7 +772,7 @@ function LeadDetailComponent() {
                   )}
                   {stageRequiresEventAt(editProfile.stage) && (
                     <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                      วันเวลานัด (สร้างในปฏิทิน)
+                      {getStageEventAtLabel(editProfile.stage)}
                       <input type="datetime-local" value={editProfile.stageEventAt} onChange={e => handleEditProfileChange('stageEventAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                     </label>
                   )}

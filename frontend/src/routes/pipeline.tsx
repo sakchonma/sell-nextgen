@@ -18,7 +18,7 @@ import {
 import { apiFetch, apiJson } from '../lib/api';
 import { wrapFormSubmit, requestSaveConfirm } from '../hooks/useSaveConfirm';
 import { filterLeadsBySearch } from '../lib/lead-search';
-import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue, stageRequiresEventAt, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
+import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue, stageRequiresEventAt, getStageEventAtLabel, formatThaiDate, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -327,9 +327,17 @@ function PipelineComponent() {
                       <span className="flex items-center gap-0.5 text-indigo-400 font-bold">
                         <DollarSign size={10} /> {formatMoney(value)} ฿
                       </span>
-                      {opp?.closeDate ? (
+                      {stageRequiresEventAt(stage.id) ? (
+                        formatThaiDate(lead.stageEventAt) ? (
+                          <span className="flex items-center gap-0.5 text-slate-500">
+                            <Calendar size={10} /> {stage.id === 'Appointed' ? 'ไปพบ' : stage.id === 'Presented' ? 'พรีเซนต์' : 'นัด'} {formatThaiDate(lead.stageEventAt)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">ยังไม่มีวันที่</span>
+                        )
+                      ) : opp?.closeDate ? (
                         <span className="flex items-center gap-0.5 text-slate-500">
-                          <Calendar size={10} /> {new Date(opp.closeDate).toLocaleDateString('th-TH')}
+                          <Calendar size={10} /> {formatThaiDate(opp.closeDate)}
                         </span>
                       ) : (
                         <span className="text-slate-600">{lead.status || 'Lead'}</span>
@@ -437,6 +445,11 @@ function PipelineComponent() {
                 <h3 className="text-lg font-semibold text-slate-100">{selectedLead.schoolName}</h3>
                 <p className="text-xs text-slate-400 mt-1">{selectedLead.zone} · {userName(selectedLead.assignedTo)}</p>
                 <p className="text-[10px] text-indigo-300 mt-1">สถานะการขาย: {STAGES.find(item => item.id === resolveLeadStage(selectedLead))?.label || resolveLeadStage(selectedLead)}</p>
+                {stageRequiresEventAt(resolveLeadStage(selectedLead)) && formatThaiDate(selectedLead.stageEventAt) && (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {getStageEventAtLabel(resolveLeadStage(selectedLead))}: {formatThaiDate(selectedLead.stageEventAt)}
+                  </p>
+                )}
                 {selectedOpp && <p className="text-[10px] text-slate-500 mt-1">ดีล: {selectedOpp.title}</p>}
               </div>
               <button onClick={() => setSelectedLead(null)} className="text-slate-500 hover:text-slate-200"><X size={18} /></button>
@@ -566,7 +579,7 @@ function PipelineComponent() {
             )}
             {stageRequiresEventAt(pendingStage.stage) && (
               <label className="block text-xs text-slate-400 font-semibold">
-                วันเวลา
+                {getStageEventAtLabel(pendingStage.stage)}
                 <input type="datetime-local" required value={stageEventAt} onChange={e => setStageEventAt(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
               </label>
             )}
