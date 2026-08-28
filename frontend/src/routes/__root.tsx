@@ -32,7 +32,8 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
-  KeyRound
+  KeyRound,
+  History
 } from 'lucide-react';
 
 export const Route = createRootRoute({
@@ -391,6 +392,17 @@ function RootComponent() {
         >
           <Settings size={18} />
           <span className={collapsed ? 'lg:hidden' : ''}>จัดการ Users & Roles</span>
+        </Link>
+      )}
+      {hasAccess([5]) && (
+        <Link
+          to="/notification-logs"
+          aria-current={isNavActive('/notification-logs') ? 'page' : undefined}
+          onClick={onNavigate}
+          className={navLinkClass('/notification-logs', collapsed)}
+        >
+          <History size={18} />
+          <span className={collapsed ? 'lg:hidden' : ''}>ประวัติ Notification</span>
         </Link>
       )}
 

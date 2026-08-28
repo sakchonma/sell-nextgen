@@ -15,6 +15,7 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NotificationLogsRouteImport } from './routes/notification-logs'
 import { Route as DiscountSettingsRouteImport } from './routes/discount-settings'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalendarRouteImport } from './routes/calendar'
@@ -62,6 +63,11 @@ const PipelineRoute = PipelineRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationLogsRoute = NotificationLogsRouteImport.update({
+  id: '/notification-logs',
+  path: '/notification-logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiscountSettingsRoute = DiscountSettingsRouteImport.update({
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
+  '/notification-logs': typeof NotificationLogsRoute
   '/pipeline': typeof PipelineRoute
   '/products': typeof ProductsRoute
   '/reports': typeof ReportsRoute
@@ -193,6 +200,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
+  '/notification-logs': typeof NotificationLogsRoute
   '/pipeline': typeof PipelineRoute
   '/products': typeof ProductsRoute
   '/reports': typeof ReportsRoute
@@ -220,6 +228,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
+  '/notification-logs': typeof NotificationLogsRoute
   '/pipeline': typeof PipelineRoute
   '/products': typeof ProductsRoute
   '/reports': typeof ReportsRoute
@@ -248,6 +257,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/discount-settings'
     | '/login'
+    | '/notification-logs'
     | '/pipeline'
     | '/products'
     | '/reports'
@@ -274,6 +284,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/discount-settings'
     | '/login'
+    | '/notification-logs'
     | '/pipeline'
     | '/products'
     | '/reports'
@@ -300,6 +311,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/discount-settings'
     | '/login'
+    | '/notification-logs'
     | '/pipeline'
     | '/products'
     | '/reports'
@@ -327,6 +339,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DiscountSettingsRoute: typeof DiscountSettingsRoute
   LoginRoute: typeof LoginRoute
+  NotificationLogsRoute: typeof NotificationLogsRoute
   PipelineRoute: typeof PipelineRoute
   ProductsRoute: typeof ProductsRoute
   ReportsRoute: typeof ReportsRoute
@@ -384,6 +397,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notification-logs': {
+      id: '/notification-logs'
+      path: '/notification-logs'
+      fullPath: '/notification-logs'
+      preLoaderRoute: typeof NotificationLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/discount-settings': {
@@ -527,6 +547,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DiscountSettingsRoute: DiscountSettingsRoute,
   LoginRoute: LoginRoute,
+  NotificationLogsRoute: NotificationLogsRoute,
   PipelineRoute: PipelineRoute,
   ProductsRoute: ProductsRoute,
   ReportsRoute: ReportsRoute,

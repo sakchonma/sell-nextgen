@@ -395,6 +395,20 @@ export interface AuditLog {
   createdAt: Date;
 }
 
+export interface NextopiaLog {
+  _id: string;
+  endpoint: string;
+  method: 'POST';
+  outcome: 'passed' | 'failed' | 'skipped';
+  skipReason?: string;
+  httpStatus?: number;
+  requestBody: Record<string, unknown>;
+  responseBody?: unknown;
+  responseText?: string;
+  errorMessage?: string;
+  createdAt: Date;
+}
+
 export type ActivityTypeScope = 'task' | 'log' | 'note';
 
 export interface ActivityTypeConfig {

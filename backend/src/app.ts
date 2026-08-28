@@ -22,6 +22,7 @@ import {
   Notifications,
   AILogs,
   AuditLogs,
+  NextopiaLogs,
   MemoryStore
 } from './models/db.js';
 import { getAICoachSuggestions, parseConversationalLog } from './services/ai.service.js';
@@ -1405,6 +1406,13 @@ app.get('/api/audit-logs', requirePermission('manageUsersAndRoles'), async (req,
 
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
   const logs = await findAll<any>(AuditLogs());
+  logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json(logs.slice(0, limit));
+});
+
+app.get('/api/nextopia-logs', requireAuthenticated(), requireRank(5), async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 300);
+  const logs = await findAll<any>(NextopiaLogs());
   logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   res.json(logs.slice(0, limit));
 });

@@ -17,6 +17,7 @@ const memoryDb: Record<string, any[]> = {
   ai_logs: [],
   audit_logs: [],
   activity_types: [],
+  nextopia_logs: [],
 };
 
 const initialActivityTypes = [
@@ -315,4 +316,5 @@ export const DiscountLimits = () => getCollection<Types.DiscountLimit>('discount
 export const AILogs = () => getCollection<Types.AILog>('ai_logs');
 export const AuditLogs = () => getCollection<Types.AuditLog>('audit_logs');
 export const ActivityTypes = () => getCollection<Types.ActivityTypeConfig>('activity_types');
+export const NextopiaLogs = () => getCollection<Types.NextopiaLog>('nextopia_logs');
 export const MemoryStore = memoryDb;
