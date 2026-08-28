@@ -31,7 +31,8 @@ import {
   Menu,
   X,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  KeyRound
 } from 'lucide-react';
 
 export const Route = createRootRoute({
@@ -413,6 +414,17 @@ function RootComponent() {
         <FolderHeart size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>ระบบคำขอ (Requests)</span>
         {requestUnreadCount > 0 && <span className={`ml-auto min-w-5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold text-center ${collapsed ? 'lg:hidden' : ''}`}>{requestUnreadCount}</span>}
+      </Link>
+
+      <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">บัญชี</div>
+      <Link
+        to="/change-password"
+        aria-current={isNavActive('/change-password') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/change-password', collapsed)}
+      >
+        <KeyRound size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>เปลี่ยนรหัสผ่าน</span>
       </Link>
     </nav>
   );

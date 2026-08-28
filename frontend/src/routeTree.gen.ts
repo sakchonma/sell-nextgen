@@ -18,6 +18,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DiscountSettingsRouteImport } from './routes/discount-settings'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AiLoggerRouteImport } from './routes/ai-logger'
 import { Route as AdminCalendarRouteImport } from './routes/admin-calendar'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -74,6 +75,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const CalendarRoute = CalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AiLoggerRoute = AiLoggerRouteImport.update({
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/admin-calendar': typeof AdminCalendarRoute
   '/ai-logger': typeof AiLoggerRoute
   '/calendar': typeof CalendarRoute
+  '/change-password': typeof ChangePasswordRoute
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/admin-calendar': typeof AdminCalendarRoute
   '/ai-logger': typeof AiLoggerRoute
   '/calendar': typeof CalendarRoute
+  '/change-password': typeof ChangePasswordRoute
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
@@ -192,6 +200,7 @@ export interface FileRoutesById {
   '/admin-calendar': typeof AdminCalendarRoute
   '/ai-logger': typeof AiLoggerRoute
   '/calendar': typeof CalendarRoute
+  '/change-password': typeof ChangePasswordRoute
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
@@ -217,6 +226,7 @@ export interface FileRouteTypes {
     | '/admin-calendar'
     | '/ai-logger'
     | '/calendar'
+    | '/change-password'
     | '/dashboard'
     | '/discount-settings'
     | '/login'
@@ -240,6 +250,7 @@ export interface FileRouteTypes {
     | '/admin-calendar'
     | '/ai-logger'
     | '/calendar'
+    | '/change-password'
     | '/dashboard'
     | '/discount-settings'
     | '/login'
@@ -263,6 +274,7 @@ export interface FileRouteTypes {
     | '/admin-calendar'
     | '/ai-logger'
     | '/calendar'
+    | '/change-password'
     | '/dashboard'
     | '/discount-settings'
     | '/login'
@@ -287,6 +299,7 @@ export interface RootRouteChildren {
   AdminCalendarRoute: typeof AdminCalendarRoute
   AiLoggerRoute: typeof AiLoggerRoute
   CalendarRoute: typeof CalendarRoute
+  ChangePasswordRoute: typeof ChangePasswordRoute
   DashboardRoute: typeof DashboardRoute
   DiscountSettingsRoute: typeof DiscountSettingsRoute
   LoginRoute: typeof LoginRoute
@@ -366,6 +379,13 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ai-logger': {
@@ -463,6 +483,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCalendarRoute: AdminCalendarRoute,
   AiLoggerRoute: AiLoggerRoute,
   CalendarRoute: CalendarRoute,
+  ChangePasswordRoute: ChangePasswordRoute,
   DashboardRoute: DashboardRoute,
   DiscountSettingsRoute: DiscountSettingsRoute,
   LoginRoute: LoginRoute,

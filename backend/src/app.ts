@@ -1296,6 +1296,10 @@ app.post('/api/auth/logout', requireAuthenticated(), async (req, res) => {
       res.status(400).json({ message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
       return;
     }
+    if (String(currentPassword) === String(newPassword)) {
+      res.status(400).json({ message: 'รหัสผ่านใหม่ต้องไม่เหมือนรหัสผ่านปัจจุบัน' });
+      return;
+    }
     if (!assertPasswordPolicy(String(newPassword || ''), res)) return;
 
     const updatedAt = new Date();
