@@ -19,14 +19,16 @@ import { apiFetch, apiJson } from '../lib/api';
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/quotes',
-  component: QuotesIndexComponent,
+  component: () => <QuotesIndexComponent variant="app" />,
 });
 
-function QuotesIndexComponent() {
-  const { user } = useAuth();
+export function QuotesIndexComponent({ variant = 'app' }: { variant?: 'app' | 'portal' }) {
+  const { user, logout } = useAuth();
   const [quotes, setQuotes] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'All' | 'PendingApproval' | 'Approved' | 'Rejected'>('All');
+  const [activeTab, setActiveTab] = useState<'All' | 'PendingApproval' | 'Approved' | 'Rejected'>(
+    variant === 'portal' ? 'PendingApproval' : 'All'
+  );
   
   // Dialog State
   const [rejectQuote, setRejectQuote] = useState<any>(null);
@@ -138,12 +140,22 @@ function QuotesIndexComponent() {
           </h2>
           <p className="text-xs text-slate-400 mt-1">จัดการเอกสารใบเสนอราคาของพนักงานและตรวจสอบคิวรออนุมัติส่วนลด</p>
         </div>
-        <Link 
-          to="/quotes/build"
-          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
-        >
-          <Plus size={14} /> สร้างใบเสนอราคา
-        </Link>
+        {variant === 'portal' ? (
+          <button
+            type="button"
+            onClick={logout}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-700 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+          >
+            ออกจากระบบ
+          </button>
+        ) : (
+          <Link 
+            to="/quotes/build"
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer transition-all"
+          >
+            <Plus size={14} /> สร้างใบเสนอราคา
+          </Link>
+        )}
       </div>
 
       {/* TABS */}
@@ -325,15 +337,22 @@ function QuotesIndexComponent() {
                 <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">ส่งลูกค้า / รับรองเอกสาร</h4>
                 <input value={sendEmail} onChange={e => setSendEmail(e.target.value)} placeholder="customer@email.com" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 outline-none" />
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={sendQuote} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500">
+                  <button
+                    onClick={sendQuote}
+                    disabled={selectedQuote.status !== 'Approved'}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
                     <Send size={13} /> บันทึกสถานะส่งแล้ว
                   </button>
                   <button onClick={() => window.open(`/api/quotes/${selectedQuote._id}/pdf`, '_blank')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-xs font-semibold text-slate-200 hover:bg-slate-700">
                     <Download size={13} /> PDF
                   </button>
                 </div>
+                {selectedQuote.status !== 'Approved' && (
+                  <p className="text-[10px] text-amber-400">ต้องรอ Level 4 อนุมัติก่อนส่งหรือรับลายเซ็น</p>
+                )}
                 <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="ชื่อผู้ยอมรับใบเสนอราคา" className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200 outline-none" />
-                <button onClick={acceptQuote} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500">
+                <button onClick={acceptQuote} disabled={selectedQuote.status !== 'Approved'} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
                   <PenLine size={13} /> บันทึกลูกค้ายอมรับ
                 </button>
               </div>

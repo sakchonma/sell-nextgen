@@ -68,6 +68,7 @@ import {
 } from './lib/lead-import.js';
 import type { ActivityTypeScope } from './types/index.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
+import { quoteApprovalPortalUrl, sendNextopiaNotification } from './services/nextopia-notify.service.js';
 import { hashPassword, validatePasswordPolicy, verifyPassword } from './utils/password.js';
 import { doTimeRangesOverlap, evaluateAvailability } from './utils/schedule.js';
 import productsRouter from './routes/products.js';
@@ -959,6 +960,27 @@ async function notifyManagers(title: string, message: string, type: 'RequestAppr
       .filter(user => user.rank >= 4 && user._id !== excludeUserId)
       .map(user => createNotification(user._id, title, message, type, targetUrl))
   );
+}
+
+async function notifyLevel4Nextopia(input: {
+  title: string;
+  message: string;
+  dedupeKey: string;
+  minRank?: number;
+  excludeUserId?: string;
+}) {
+  const users = await findAll<any>(Users());
+  const minRank = input.minRank ?? 4;
+  const recipients = users
+    .filter(user => user.rank >= minRank && user._id !== input.excludeUserId && user.email)
+    .map(user => ({ email: String(user.email) }));
+  await sendNextopiaNotification({
+    title: input.title,
+    message: input.message,
+    recipients,
+    dedupeKey: input.dedupeKey,
+    actionUrl: quoteApprovalPortalUrl(),
+  });
 }
 
 const AI_TASK_TYPES: ConversationalTaskType[] = ['Call', 'Meeting', 'Presentation', 'Demo', 'FollowUp', 'Other'];
@@ -3578,6 +3600,12 @@ app.post('/api/quotes', requirePermission('manageQuotes'), validateBody(createQu
 
   const discountPercentVal = Number(overallDiscountPercent) || 0;
   const isOverLimit = isDiscountOverLimit(discountPercentVal, userLimit);
+  const status = currentUser.rank >= 4
+    ? getQuoteStatusForDiscount(discountPercentVal, userLimit)
+    : 'PendingApproval';
+  const requiredApprovalRank = status === 'PendingApproval'
+    ? (isOverLimit ? await getRequiredQuoteApprovalRank(discountPercentVal, limits) : 4)
+    : undefined;
 
   const newQuote = {
     _id: `qt_${Date.now()}`,
@@ -3588,9 +3616,9 @@ app.post('/api/quotes', requirePermission('manageQuotes'), validateBody(createQu
     overallDiscountPercent: discountPercentVal,
     vatPercent: Number(vatPercent) || 7,
     totalAmount: Number(totalAmount) || 0,
-    status: getQuoteStatusForDiscount(discountPercentVal, userLimit),
+    status,
     creatorId: currentUser._id,
-    requiredApprovalRank: isOverLimit ? await getRequiredQuoteApprovalRank(discountPercentVal, limits) : undefined,
+    requiredApprovalRank,
     approvalTrail: [],
     revisions: [],
     emailStatus: 'Draft',
@@ -3613,11 +3641,18 @@ app.post('/api/quotes', requirePermission('manageQuotes'), validateBody(createQu
   if (newQuote.status === 'PendingApproval') {
     await notifyManagers(
       'ใบเสนอราคารออนุมัติ',
-      `${currentUser.name} ส่งใบเสนอราคา ${newQuote.quoteNumber} ที่เกินลิมิตส่วนลด`,
+      `${currentUser.name} ส่งใบเสนอราคา ${newQuote.quoteNumber} รอ Level 4 อนุมัติ`,
       'QuoteApproval',
-      '/quotes',
+      '/portal/quotes',
       currentUser._id
     );
+    await notifyLevel4Nextopia({
+      title: 'คำขออนุมัติใบเสนอราคา',
+      message: `${currentUser.name} ส่งใบเสนอราคา ${newQuote.quoteNumber} ยอด ${Number(newQuote.totalAmount || 0).toLocaleString('th-TH')} บาท — กดเพื่อเข้าหน้าเอกสารและอนุมัติ`,
+      dedupeKey: `crm:quote-approval:${newQuote._id}`,
+      minRank: newQuote.requiredApprovalRank || 4,
+      excludeUserId: currentUser._id,
+    });
   }
   res.status(201).json(newQuote);
 });
@@ -3638,6 +3673,12 @@ app.put('/api/quotes/:id/revise', requirePermission('manageQuotes'), validateBod
   const discountSettings = await findAll<any>(DiscountLimits());
   const userLimit = getUserDiscountLimit(discountSettings[0], currentUser);
   const nextDiscount = Number(req.body.overallDiscountPercent ?? quote.overallDiscountPercent ?? 0);
+  const nextStatus = currentUser.rank >= 4
+    ? getQuoteStatusForDiscount(nextDiscount, userLimit)
+    : 'PendingApproval';
+  const nextRequiredRank = nextStatus === 'PendingApproval'
+    ? (isDiscountOverLimit(nextDiscount, userLimit) ? await getRequiredQuoteApprovalRank(nextDiscount, discountSettings[0]) : 4)
+    : undefined;
   const nextVersion = Number(quote.version || 1) + 1;
   const revision = {
     version: quote.version || 1,
@@ -3661,8 +3702,8 @@ app.put('/api/quotes/:id/revise', requirePermission('manageQuotes'), validateBod
     overallDiscountPercent: nextDiscount,
     vatPercent: Number(req.body.vatPercent ?? quote.vatPercent ?? 7),
     totalAmount: Number(req.body.totalAmount ?? quote.totalAmount ?? 0),
-    status: getQuoteStatusForDiscount(nextDiscount, userLimit),
-    requiredApprovalRank: isDiscountOverLimit(nextDiscount, userLimit) ? await getRequiredQuoteApprovalRank(nextDiscount, discountSettings[0]) : undefined,
+    status: nextStatus,
+    requiredApprovalRank: nextRequiredRank,
     discountLimitChecked: isDiscountOverLimit(nextDiscount, userLimit),
     expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : quote.expiresAt,
     terms: req.body.terms ?? quote.terms,
@@ -3677,6 +3718,22 @@ app.put('/api/quotes/:id/revise', requirePermission('manageQuotes'), validateBod
     version: nextVersion,
     reason: req.body.reason
   });
+  if (updatedQuote.status === 'PendingApproval') {
+    await notifyManagers(
+      'ใบเสนอราคารออนุมัติ',
+      `${currentUser.name} แก้ไขใบเสนอราคา ${quote.quoteNumber} รอ Level 4 อนุมัติ`,
+      'QuoteApproval',
+      '/portal/quotes',
+      currentUser._id
+    );
+    await notifyLevel4Nextopia({
+      title: 'คำขออนุมัติใบเสนอราคา',
+      message: `${currentUser.name} แก้ไขใบเสนอราคา ${quote.quoteNumber} — กดเพื่อเข้าหน้าเอกสารและอนุมัติ`,
+      dedupeKey: `crm:quote-approval:${quote._id}:v${nextVersion}`,
+      minRank: updatedQuote.requiredApprovalRank || 4,
+      excludeUserId: currentUser._id,
+    });
+  }
   res.json(updatedQuote);
 });
 
@@ -3752,6 +3809,10 @@ app.post('/api/quotes/:id/send', requirePermission('manageQuotes'), validateBody
     res.status(403).json({ message: 'ไม่มีสิทธิ์ส่งใบเสนอราคานี้' });
     return;
   }
+  if (quote.status !== 'Approved') {
+    res.status(400).json({ message: 'ต้องรอ Level 4 อนุมัติใบเสนอราคาก่อนส่ง' });
+    return;
+  }
 
   const lead = quote.leadId ? await Leads().findOne({ _id: quote.leadId } as any) : null;
   const primaryEmail = Array.isArray(lead?.contacts) ? lead.contacts.find((contact: any) => contact.email)?.email : undefined;
@@ -3784,6 +3845,10 @@ app.post('/api/quotes/:id/accept', requirePermission('manageQuotes'), validateBo
   }
   if (!(await userCanAccessQuote(currentUser, quote))) {
     res.status(403).json({ message: 'ไม่มีสิทธิ์อัปเดตการยอมรับใบเสนอราคา' });
+    return;
+  }
+  if (quote.status !== 'Approved') {
+    res.status(400).json({ message: 'ต้องรอ Level 4 อนุมัติใบเสนอราคาก่อนรับลายเซ็น' });
     return;
   }
 
@@ -4117,9 +4182,15 @@ app.post('/api/requests', requireAuthenticated(), validateBody(createRequestBody
       'คำขอใหม่รออนุมัติ',
       `${currentUser.name} ส่งคำขอ ${newRequest.requestNumber}: ${title}`,
       'RequestApproval',
-      '/requests',
+      '/portal/quotes',
       currentUser._id
     );
+    await notifyLevel4Nextopia({
+      title: 'คำขอใหม่รออนุมัติใบเสนอราคา',
+      message: `${currentUser.name} ส่งคำขอ ${newRequest.requestNumber}: ${title} — กดเข้าหน้าเอกสารใบเสนอราคาเพื่ออนุมัติ`,
+      dedupeKey: `crm:request-approval:${newRequest._id}`,
+      excludeUserId: currentUser._id,
+    });
   }
   res.status(201).json(newRequest);
 });

@@ -152,7 +152,7 @@ function RootComponent() {
     );
   }
 
-  const isPublicPage = ['/login'].includes(location.pathname);
+  const isPublicPage = location.pathname === '/login' || location.pathname.startsWith('/portal');
 
   if (isPublicPage) {
     return <Outlet />;

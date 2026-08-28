@@ -30,6 +30,8 @@ import { Route as QuotesIndexRouteImport } from './routes/quotes.index'
 import { Route as LeadsIndexRouteImport } from './routes/leads.index'
 import { Route as RequestsCreateRouteImport } from './routes/requests.create'
 import { Route as QuotesBuildRouteImport } from './routes/quotes.build'
+import { Route as PortalLoginRouteImport } from './routes/portal.login'
+import { Route as PortalQuotesRouteImport } from './routes/portal.quotes'
 import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
 
 const TeamOverviewRoute = TeamOverviewRouteImport.update({
@@ -137,6 +139,16 @@ const QuotesBuildRoute = QuotesBuildRouteImport.update({
   path: '/quotes/build',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalLoginRoute = PortalLoginRouteImport.update({
+  id: '/portal/login',
+  path: '/portal/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalQuotesRoute = PortalQuotesRouteImport.update({
+  id: '/portal/quotes',
+  path: '/portal/quotes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LeadsLeadIdRoute = LeadsLeadIdRouteImport.update({
   id: '/leads/$leadId',
   path: '/leads/$leadId',
@@ -162,6 +174,8 @@ export interface FileRoutesByFullPath {
   '/team-overview': typeof TeamOverviewRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/quotes/build': typeof QuotesBuildRoute
+  '/portal/login': typeof PortalLoginRoute
+  '/portal/quotes': typeof PortalQuotesRoute
   '/requests/create': typeof RequestsCreateRoute
   '/leads/': typeof LeadsIndexRoute
   '/quotes/': typeof QuotesIndexRoute
@@ -186,6 +200,8 @@ export interface FileRoutesByTo {
   '/team-overview': typeof TeamOverviewRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/quotes/build': typeof QuotesBuildRoute
+  '/portal/login': typeof PortalLoginRoute
+  '/portal/quotes': typeof PortalQuotesRoute
   '/requests/create': typeof RequestsCreateRoute
   '/leads': typeof LeadsIndexRoute
   '/quotes': typeof QuotesIndexRoute
@@ -211,6 +227,8 @@ export interface FileRoutesById {
   '/team-overview': typeof TeamOverviewRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/quotes/build': typeof QuotesBuildRoute
+  '/portal/login': typeof PortalLoginRoute
+  '/portal/quotes': typeof PortalQuotesRoute
   '/requests/create': typeof RequestsCreateRoute
   '/leads/': typeof LeadsIndexRoute
   '/quotes/': typeof QuotesIndexRoute
@@ -237,6 +255,8 @@ export interface FileRouteTypes {
     | '/team-overview'
     | '/leads/$leadId'
     | '/quotes/build'
+    | '/portal/login'
+    | '/portal/quotes'
     | '/requests/create'
     | '/leads/'
     | '/quotes/'
@@ -261,6 +281,8 @@ export interface FileRouteTypes {
     | '/team-overview'
     | '/leads/$leadId'
     | '/quotes/build'
+    | '/portal/login'
+    | '/portal/quotes'
     | '/requests/create'
     | '/leads'
     | '/quotes'
@@ -285,6 +307,8 @@ export interface FileRouteTypes {
     | '/team-overview'
     | '/leads/$leadId'
     | '/quotes/build'
+    | '/portal/login'
+    | '/portal/quotes'
     | '/requests/create'
     | '/leads/'
     | '/quotes/'
@@ -310,6 +334,8 @@ export interface RootRouteChildren {
   TeamOverviewRoute: typeof TeamOverviewRoute
   LeadsLeadIdRoute: typeof LeadsLeadIdRoute
   QuotesBuildRoute: typeof QuotesBuildRoute
+  PortalLoginRoute: typeof PortalLoginRoute
+  PortalQuotesRoute: typeof PortalQuotesRoute
   RequestsCreateRoute: typeof RequestsCreateRoute
   LeadsIndexRoute: typeof LeadsIndexRoute
   QuotesIndexRoute: typeof QuotesIndexRoute
@@ -465,6 +491,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuotesBuildRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal/login': {
+      id: '/portal/login'
+      path: '/portal/login'
+      fullPath: '/portal/login'
+      preLoaderRoute: typeof PortalLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal/quotes': {
+      id: '/portal/quotes'
+      path: '/portal/quotes'
+      fullPath: '/portal/quotes'
+      preLoaderRoute: typeof PortalQuotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/leads/$leadId': {
       id: '/leads/$leadId'
       path: '/leads/$leadId'
@@ -494,6 +534,8 @@ const rootRouteChildren: RootRouteChildren = {
   TeamOverviewRoute: TeamOverviewRoute,
   LeadsLeadIdRoute: LeadsLeadIdRoute,
   QuotesBuildRoute: QuotesBuildRoute,
+  PortalLoginRoute: PortalLoginRoute,
+  PortalQuotesRoute: PortalQuotesRoute,
   RequestsCreateRoute: RequestsCreateRoute,
   LeadsIndexRoute: LeadsIndexRoute,
   QuotesIndexRoute: QuotesIndexRoute,
