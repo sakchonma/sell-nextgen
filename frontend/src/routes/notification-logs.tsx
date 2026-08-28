@@ -35,6 +35,7 @@ function pretty(value: unknown) {
 
 function NotificationLogsPage() {
   const { user } = useAuth();
+  const canView = Number(user?.rank) >= 5 || user?.email === 'root@nextgen.co.th';
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,11 +51,11 @@ function NotificationLogsPage() {
   };
 
   useEffect(() => {
-    if ((user?.rank || 0) !== 5) return;
+    if (!canView) return;
     load();
-  }, [user?._id, user?.rank]);
+  }, [user?._id, canView]);
 
-  if ((user?.rank || 0) !== 5) {
+  if (!canView) {
     return (
       <div className="p-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 text-sm text-rose-200">
         เมนูนี้เห็นได้เฉพาะ Rank 5 Executive

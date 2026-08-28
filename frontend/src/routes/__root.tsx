@@ -114,10 +114,12 @@ function RootComponent() {
 
   const hasAccess = (requiredRanks: number[]) => {
     if (!user) return false;
-    // Root (rank 5) has full access to all menus
-    if (user.rank === 5) return true;
-    return requiredRanks.includes(user.rank);
+    const rank = Number(user.rank);
+    if (rank >= 5) return true;
+    return requiredRanks.includes(rank);
   };
+
+  const isExec = Number(user?.rank) >= 5 || user?.email === 'root@nextgen.co.th';
 
   const getRoleName = (u: User) => {
     if (u.rank === 5) return 'ผู้บริหาร (Exec)';
@@ -247,7 +249,7 @@ function RootComponent() {
   };
 
   const renderSidebarNav = (collapsed: boolean, onNavigate: () => void) => (
-    <nav className={`p-3 lg:p-4 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden lg:max-h-[calc(100vh-170px)] ${collapsed ? 'lg:flex lg:flex-col lg:gap-1.5' : 'lg:block'}`}>
+    <nav className={`p-3 lg:p-4 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden flex-1 min-h-0 ${collapsed ? 'lg:flex lg:flex-col lg:gap-1.5' : ''}`}>
       <Link
         to="/dashboard"
         aria-current={isNavActive('/dashboard') ? 'page' : undefined}
@@ -354,7 +356,7 @@ function RootComponent() {
         <span className={collapsed ? 'lg:hidden' : ''}>รายงานกิจกรรม</span>
       </Link>
 
-      <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">จัดการระบบ</div>
+      <div className="pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">จัดการระบบ</div>
       <Link
         to="/products"
         aria-current={isNavActive('/products') ? 'page' : undefined}
@@ -394,7 +396,7 @@ function RootComponent() {
           <span className={collapsed ? 'lg:hidden' : ''}>จัดการ Users & Roles</span>
         </Link>
       )}
-      {hasAccess([5]) && (
+      {isExec && (
         <Link
           to="/notification-logs"
           aria-current={isNavActive('/notification-logs') ? 'page' : undefined}
@@ -405,8 +407,17 @@ function RootComponent() {
           <span className={collapsed ? 'lg:hidden' : ''}>ประวัติ Notification</span>
         </Link>
       )}
+      <Link
+        to="/change-password"
+        aria-current={isNavActive('/change-password') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/change-password', collapsed)}
+      >
+        <KeyRound size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>เปลี่ยนรหัสผ่าน</span>
+      </Link>
 
-      <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">ธุรกรรม & คำขอ</div>
+      <div className="pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">ธุรกรรม & คำขอ</div>
       <Link
         to="/quotes"
         aria-current={isNavActive('/quotes') ? 'page' : undefined}
@@ -427,17 +438,6 @@ function RootComponent() {
         <span className={collapsed ? 'lg:hidden' : ''}>ระบบคำขอ (Requests)</span>
         {requestUnreadCount > 0 && <span className={`ml-auto min-w-5 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold text-center ${collapsed ? 'lg:hidden' : ''}`}>{requestUnreadCount}</span>}
       </Link>
-
-      <div className="hidden lg:block pt-4 pb-1 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">บัญชี</div>
-      <Link
-        to="/change-password"
-        aria-current={isNavActive('/change-password') ? 'page' : undefined}
-        onClick={onNavigate}
-        className={navLinkClass('/change-password', collapsed)}
-      >
-        <KeyRound size={18} />
-        <span className={collapsed ? 'lg:hidden' : ''}>เปลี่ยนรหัสผ่าน</span>
-      </Link>
     </nav>
   );
 
@@ -454,8 +454,8 @@ function RootComponent() {
       )}
 
       <aside className="hidden lg:flex lg:flex-col glass-panel border-b lg:border-b-0 lg:border-r border-slate-800 shrink-0 lg:h-screen sticky top-0 z-50">
-        <div>
-          <div className={`p-4 lg:p-6 border-b border-slate-800 flex items-center justify-between ${isDesktopSidebarCollapsed ? 'lg:justify-center' : ''}`}>
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className={`p-4 lg:p-6 border-b border-slate-800 flex items-center justify-between shrink-0 ${isDesktopSidebarCollapsed ? 'lg:justify-center' : ''}`}>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25">
                 NG
