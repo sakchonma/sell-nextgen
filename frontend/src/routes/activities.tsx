@@ -21,21 +21,22 @@ const REMINDER_OPTIONS = [
   { label: '1 วัน', value: 1440 },
 ];
 
-function startOfLocalDay(value: string | Date) {
+function bangkokDateKey(value?: string | Date) {
+  if (!value) return '';
   const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function hasReachedScheduledDay(startAt?: string | Date) {
-  if (!startAt) return false;
-  const start = new Date(startAt);
-  if (Number.isNaN(start.getTime())) return false;
-  return startOfLocalDay(new Date()) >= startOfLocalDay(start);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
 }
 
 function isFollowUpGreen(item: any) {
-  return (item.followUpUpdated || item.status === 'Completed') && hasReachedScheduledDay(item.startAt);
+  const updatedAt = item.followUpUpdatedAt;
+  if (!updatedAt || !item.startAt) return false;
+  return bangkokDateKey(updatedAt) >= bangkokDateKey(item.startAt);
 }
 
 function ActivitiesComponent() {

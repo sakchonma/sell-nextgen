@@ -757,6 +757,18 @@ function asDate(value: any): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+function bangkokDateKey(value: any): string | null {
+  if (!value) return null;
+  const date = asDate(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 function localDateKey(value: any): string | null {
   if (!value) return null;
   const raw = String(value).trim();
@@ -3084,7 +3096,14 @@ app.get('/api/activities', requirePermission('manageTasks'), async (req, res) =>
       return start >= now - 24 * 60 * 60 * 1000 && start <= now + sevenDays;
     })
     .sort((a, b) => asDate(a.startAt).getTime() - asDate(b.startAt).getTime())
-    .map(task => ({
+    .map(task => {
+      const lastComment = Array.isArray(task.comments) && task.comments.length
+        ? task.comments[task.comments.length - 1]
+        : null;
+      const followUpUpdatedAt = task.followUpUpdatedAt || lastComment?.createdAt || (task.status === 'Completed' ? task.updatedAt : undefined);
+      const startDay = bangkokDateKey(task.startAt);
+      const updateDay = bangkokDateKey(followUpUpdatedAt);
+      return {
       _id: task._id,
       title: task.title,
       type: task.type,
@@ -3095,11 +3114,11 @@ app.get('/api/activities', requirePermission('manageTasks'), async (req, res) =>
       schoolName: task.leadId ? leadMap.get(task.leadId)?.schoolName : undefined,
       reminderAt: task.reminderAt,
       overdue: task.status !== 'Completed' && asDate(task.endAt).getTime() < now,
-      followUpUpdated: Boolean(task.followUpUpdatedAt) || (Array.isArray(task.comments) && task.comments.length > 0) || task.status === 'Completed',
-      lastFollowUpNote: Array.isArray(task.comments) && task.comments.length
-        ? task.comments[task.comments.length - 1].content
-        : undefined
-    }));
+      followUpUpdatedAt: followUpUpdatedAt || undefined,
+      followUpUpdated: Boolean(startDay && updateDay && updateDay >= startDay),
+      lastFollowUpNote: lastComment?.content
+    };
+    });
 
   res.json({ feed, upcoming });
 });
