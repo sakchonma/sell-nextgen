@@ -49,9 +49,18 @@ export interface Role {
   isSystemRole: boolean;
 }
 
+export type LeadSegment = 'school' | 'corporate' | 'university';
+
 export interface Lead {
   _id: string;
+  /** Display name: school / organisation / "faculty university". Kept as schoolName for backward compatibility. */
   schoolName: string;
+  /** Customer group. Missing = 'school' (legacy records). */
+  segment?: LeadSegment;
+  /** Stable key from the source spreadsheet, e.g. "corporate:L01", "university:FAC-001". */
+  externalRef?: string;
+  /** Segment-specific research fields imported from Excel (see config/lead-segments.ts). */
+  segmentProfile?: Record<string, unknown>;
   address: string;
   zone: string;
   status: 'Cold' | 'Warm' | 'Hot' | 'Customer';

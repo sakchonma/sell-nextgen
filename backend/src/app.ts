@@ -68,6 +68,15 @@ import {
   provinceToZone,
 } from './lib/lead-import.js';
 import type { ActivityTypeScope } from './types/index.js';
+import {
+  LEAD_SEGMENTS,
+  SEGMENT_SEARCH_FIELDS,
+  buildSegmentFacets,
+  extractProfileFilters,
+  matchesProfileFilters,
+  normalizeLeadSegment,
+  parseSegmentFilter
+} from './config/lead-segments.js';
 import { getQuoteStatusForDiscount, getUserDiscountLimit, isDiscountOverLimit } from './utils/discount.js';
 import { quoteApprovalPortalUrl, sendNextopiaNotification } from './services/nextopia-notify.service.js';
 import { hashPassword, validatePasswordPolicy, verifyPassword } from './utils/password.js';
@@ -663,6 +672,11 @@ const optionalNumberSchema = z.coerce.number().min(0).optional();
 const optionalDateTextSchema = z.string().trim().optional().refine(value => !value || !Number.isNaN(Date.parse(value)), {
   message: 'ต้องเป็นวันที่หรือเวลาในรูปแบบที่ถูกต้อง'
 });
+const leadSegmentSchema = z.enum(LEAD_SEGMENTS);
+const segmentProfileSchema = z.record(
+  z.string().trim().min(1).max(60),
+  z.union([z.string().max(4000), z.number(), z.boolean(), z.null()])
+).refine(value => Object.keys(value).length <= 80, { message: 'segmentProfile มีฟิลด์มากเกินไป' });
 const createLeadBodySchema = z.object({
   schoolName: nonEmptyTextSchema,
   address: optionalTextSchema,
@@ -689,6 +703,8 @@ const createLeadBodySchema = z.object({
   source: optionalTextSchema,
   campaign: optionalTextSchema,
   isTest: z.coerce.boolean().optional().default(false),
+  segment: leadSegmentSchema.optional(),
+  segmentProfile: segmentProfileSchema.optional(),
   assignedTo: idSchema.optional(),
   contacts: z.array(leadContactSchema).default([]),
   attachments: z.array(leadAttachmentSchema).default([])
@@ -723,6 +739,8 @@ const updateLeadBodySchema = z.object({
   transferReason: optionalTextSchema,
   archived: z.coerce.boolean().optional(),
   isTest: z.coerce.boolean().optional(),
+  segment: leadSegmentSchema.optional(),
+  segmentProfile: segmentProfileSchema.optional(),
   contacts: z.array(leadContactSchema).optional(),
   notes: z.array(leadNoteSchema).optional(),
   attachments: z.array(leadAttachmentSchema).optional()
@@ -1137,8 +1155,13 @@ function formatDuplicateConflictMessage(duplicates: any[]) {
 function hydrateLeadForResponse(lead: any) {
   return {
     ...lead,
+    segment: normalizeLeadSegment(lead.segment),
     stage: normalizeLeadStage(lead.stage)
   };
+}
+
+function leadMatchesSegment(lead: any, segment: ReturnType<typeof parseSegmentFilter>) {
+  return !segment || normalizeLeadSegment(lead?.segment) === segment;
 }
 
 function hydrateOpportunityForResponse(opp: any) {
@@ -1874,8 +1897,20 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     findAll<any>(Users())
   ]);
   const userMap = new Map(users.map((user: any) => [user._id, user]));
-  const testLeadIds = new Set(leadsRaw.filter(isTestLead).map((lead: any) => lead._id));
-  const visibleLeads = leadsRaw.filter((lead: any) => userCanSeeLead(currentUser, lead) && !isTestLead(lead));
+  const reportSegment = parseSegmentFilter(req.query.segment);
+  const leadsBySegment = LEAD_SEGMENTS.reduce((acc, segment) => {
+    acc[segment] = leadsRaw.filter((lead: any) =>
+      !lead.archived && !isTestLead(lead) && userCanSeeLead(currentUser, lead) && normalizeLeadSegment(lead.segment) === segment
+    ).length;
+    return acc;
+  }, {} as Record<string, number>);
+  // "testLeadIds" = every lead excluded from this report: test leads, plus other segments when ?segment= is set.
+  const testLeadIds = new Set(
+    leadsRaw
+      .filter((lead: any) => isTestLead(lead) || !leadMatchesSegment(lead, reportSegment))
+      .map((lead: any) => lead._id)
+  );
+  const visibleLeads = leadsRaw.filter((lead: any) => userCanSeeLead(currentUser, lead) && !testLeadIds.has(lead._id));
   const leads = visibleLeads.filter((lead: any) => inRangeByDate(lead.createdAt));
   const visibleLeadIds = new Set(leads.map((lead: any) => lead._id));
   const opportunities = oppsRaw
@@ -1894,7 +1929,7 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
     (currentUser.rank >= 4 ||
     task.creatorId === currentUser._id ||
     (task.participants || []).some((participant: any) => participant.userId === currentUser._id)) &&
-    (!task.leadId || !testLeadIds.has(task.leadId))
+    (task.leadId ? !testLeadIds.has(task.leadId) : !reportSegment)
   );
   const tasksByDate = tasksVisible.filter((task: any) => inRangeByDate(task.startAt || task.createdAt));
   const tasks = tasksByDate.filter((task: any) => activityTypeMatches(task.type));
@@ -2061,6 +2096,8 @@ app.get('/api/reports/summary', requireAuthenticated(), async (req, res) => {
 
   res.json({
     scope: currentUser.rank >= 4 ? 'team' : 'personal',
+    segment: reportSegment || 'all',
+    leadsBySegment,
     dateFrom: req.query.dateFrom || null,
     dateTo: req.query.dateTo || null,
     activityType: activityTypeRaw,
@@ -2164,18 +2201,29 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
     minScore,
     maxScore,
     includeArchived = 'false',
+    province = 'All',
     limit,
     offset
   } = req.query;
+  const segmentFilter = parseSegmentFilter(req.query.segment);
+  const profileFilters = extractProfileFilters(req.query as Record<string, unknown>);
   const hasPagingParams = limit !== undefined || offset !== undefined;
   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const pageOffset = Math.max(Number(offset) || 0, 0);
   const searchText = String(search).trim().toLowerCase();
   leadsArray = leadsArray.filter(lead => {
     if (includeArchived !== 'true' && lead.archived) return false;
+    if (!leadMatchesSegment(lead, segmentFilter)) return false;
+    if (!matchesProfileFilters(lead, segmentFilter, profileFilters)) return false;
+    if (province !== 'All' && province && lead.province !== province) return false;
     if (searchText) {
       const compactSearch = normalizeDuplicateKey(searchText);
-      const haystack = [lead.schoolName, lead.address, lead.zone, lead.source, lead.campaign, lead.district, lead.province]
+      const profileSearch = (SEGMENT_SEARCH_FIELDS[normalizeLeadSegment(lead.segment)] || [])
+        .map(field => lead.segmentProfile?.[field]);
+      const contactSearch = normalizeLeadSegment(lead.segment) === 'school'
+        ? []
+        : (lead.contacts || []).flatMap((contact: any) => [contact.name, contact.email, contact.phone]);
+      const haystack = [lead.schoolName, lead.address, lead.zone, lead.source, lead.campaign, lead.district, lead.province, ...profileSearch, ...contactSearch]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -2215,6 +2263,42 @@ app.get('/api/leads', requirePermission('manageLeads'), async (req, res) => {
   res.json(hydratedLeads);
 });
 
+// Filter options + headline counts for the Corporate / University list pages.
+app.get('/api/leads/segment-facets', requirePermission('manageLeads'), async (req, res) => {
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
+    res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+  const segment = parseSegmentFilter(req.query.segment);
+  if (!segment) {
+    res.status(400).json({ message: 'ต้องระบุ segment เป็น school, corporate หรือ university' });
+    return;
+  }
+  const segmentLeads = (await findAll<any>(Leads()))
+    .filter(lead => !lead.archived && leadMatchesSegment(lead, segment) && userCanWorkOnLead(currentUser, lead));
+  const segmentLeadIds = new Set(segmentLeads.map(lead => lead._id));
+  const [opps, tasks] = await Promise.all([findAll<any>(Opportunities()), findAll<any>(Tasks())]);
+  const stageCounts: Record<string, number> = {};
+  for (const lead of segmentLeads) {
+    const stage = normalizeLeadStage(lead.stage);
+    stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+  }
+  const provinces = Array.from(new Set(segmentLeads.map(lead => String(lead.province || '').trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'th'));
+  res.json({
+    segment,
+    total: segmentLeads.length,
+    stageCounts,
+    provinces,
+    facets: buildSegmentFacets(segmentLeads, segment),
+    linked: {
+      opportunities: opps.filter(opp => segmentLeadIds.has(opp.leadId)).length,
+      openTasks: tasks.filter(task => task.leadId && segmentLeadIds.has(task.leadId) && task.status !== 'Completed').length
+    }
+  });
+});
+
 app.get('/api/leads/locations', requirePermission('manageLeads'), async (req, res) => {
   const currentUser = await getCurrentUser(req);
   if (!currentUser) {
@@ -2222,7 +2306,8 @@ app.get('/api/leads/locations', requirePermission('manageLeads'), async (req, re
     return;
   }
 
-  const visibleLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanWorkOnLead(currentUser, lead));
+  const locationSegment = parseSegmentFilter(req.query.segment);
+  const visibleLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanWorkOnLead(currentUser, lead) && leadMatchesSegment(lead, locationSegment));
   const uniqueSorted = (field: 'district' | 'province') => {
     const values = new Set<string>();
     for (const lead of visibleLeads) {
@@ -2246,10 +2331,11 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
   }
   const users = await findAll<any>(Users());
   const userMap = new Map(users.map(user => [user._id, user]));
-  const allLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanWorkOnLead(currentUser, lead));
+  const exportSegment = parseSegmentFilter(req.query.segment);
+  const allLeads = (await findAll<any>(Leads())).filter(lead => !lead.archived && userCanWorkOnLead(currentUser, lead) && leadMatchesSegment(lead, exportSegment));
   const escapeCsv = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const rows = [
-    ['schoolName', 'address', 'zone', 'status', 'stage', 'score', 'gradeLevels', 'educationAuthority', 'district', 'province', 'studentCount', 'upperElementaryStudentCount', 'lastContactedAt', 'nextCallAt', 'remarks', 'legacySaleName', 'source', 'campaign', 'assignedTo', 'contacts'].join(','),
+    ['schoolName', 'address', 'zone', 'status', 'stage', 'score', 'gradeLevels', 'educationAuthority', 'district', 'province', 'studentCount', 'upperElementaryStudentCount', 'lastContactedAt', 'nextCallAt', 'remarks', 'legacySaleName', 'source', 'campaign', 'assignedTo', 'contacts', 'segment', 'externalRef'].join(','),
     ...allLeads.map(lead => [
       lead.schoolName,
       lead.address,
@@ -2270,11 +2356,13 @@ app.get('/api/leads/export.csv', requirePermission('manageLeads'), async (req, r
       lead.source,
       lead.campaign,
       userMap.get(lead.assignedTo)?.name || lead.assignedTo,
-      (lead.contacts || []).map((contact: any) => `${contact.name}:${contact.phone || contact.email || ''}`).join('; ')
+      (lead.contacts || []).map((contact: any) => `${contact.name}:${contact.phone || contact.email || ''}`).join('; '),
+      normalizeLeadSegment(lead.segment),
+      lead.externalRef
     ].map(escapeCsv).join(','))
   ];
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="nextgen-leads.csv"');
+  res.setHeader('Content-Disposition', `attachment; filename="nextgen-leads${exportSegment ? `-${exportSegment}` : ''}.csv"`);
   res.send(`\uFEFF${rows.join('\n')}`);
 });
 
@@ -2298,7 +2386,8 @@ app.post('/api/leads/import.csv', requirePermission('manageLeads'), express.raw(
   }
 
   const users = await findAll<any>(Users());
-  const existingLeads = await findAll<any>(Leads());
+  // School import only merges into school leads — never overwrite corporate/university records.
+  const existingLeads = (await findAll<any>(Leads())).filter((lead: any) => normalizeLeadSegment(lead.segment) === 'school');
   const imported: any[] = [];
   const updated: any[] = [];
   const skipped: any[] = [];
@@ -2433,6 +2522,8 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     source,
     campaign,
     isTest,
+    segment,
+    segmentProfile,
     assignedTo,
     contacts,
     attachments
@@ -2476,6 +2567,8 @@ app.post('/api/leads', requirePermission('manageLeads'), validateBody(createLead
     source,
     campaign,
     isTest: Boolean(isTest),
+    segment: normalizeLeadSegment(segment),
+    ...(segmentProfile ? { segmentProfile } : {}),
     archived: false,
     contacts: contacts || [],
     assignedTo: ownerId,
@@ -2540,6 +2633,8 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     campaign,
     archived,
     isTest,
+    segment,
+    segmentProfile,
     attachments
   } = req.body;
   if (!userCanWorkOnLead(currentUser, lead)) {
@@ -2620,6 +2715,10 @@ app.put('/api/leads/:id', requirePermission('manageLeads'), validateBody(updateL
     assignmentHistory,
     archived: archived !== undefined ? archived : lead.archived,
     isTest: isTest !== undefined ? Boolean(isTest) : lead.isTest ?? false,
+    segment: segment !== undefined ? normalizeLeadSegment(segment) : normalizeLeadSegment(lead.segment),
+    ...(segmentProfile !== undefined || lead.segmentProfile
+      ? { segmentProfile: { ...(lead.segmentProfile || {}), ...(segmentProfile || {}) } }
+      : {}),
     contacts: contacts || lead.contacts,
     notes: notes ? [...lead.notes, ...notes.map((note: any) => ({ ...note, createdAt: note.createdAt || new Date() }))] : lead.notes,
     attachments: attachments || lead.attachments || [],

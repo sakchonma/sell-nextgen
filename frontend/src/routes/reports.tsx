@@ -9,6 +9,13 @@ import { dateKey } from '../lib/datetime';
 import { FUNNEL_DISPLAY_STAGE_CODES, getPipelineColumnStyle, getSalesFunnelStageLabel } from '../lib/sales-funnel-stages';
 import { ModalShell, PaginationControls } from '../components/ui';
 
+const SEGMENT_LABELS = {
+  all: 'ทุกกลุ่ม',
+  school: 'โรงเรียน',
+  corporate: 'องค์กร',
+  university: 'มหาวิทยาลัย',
+} as const;
+
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/reports',
@@ -98,6 +105,7 @@ function ReportsComponent() {
   const [dateTo, setDateTo] = useState('');
   const [datePreset, setDatePreset] = useState<DateRangePreset | null>(null);
   const [activityType, setActivityType] = useState<ActivityTypeFilter>('all');
+  const [segmentFilter, setSegmentFilter] = useState<'all' | 'school' | 'corporate' | 'university'>('all');
   const [activitySearch, setActivitySearch] = useState('');
   const [activityPage, setActivityPage] = useState(1);
   const [detailModal, setDetailModal] = useState<DetailModalKey>(null);
@@ -109,6 +117,7 @@ function ReportsComponent() {
     if (dateFrom) params.set('dateFrom', dateFrom);
     if (dateTo) params.set('dateTo', dateTo);
     if (activityType !== 'all') params.set('activityType', activityType);
+    if (segmentFilter !== 'all') params.set('segment', segmentFilter);
 
     Promise.all([
       apiFetch(`/api/reports/summary?${params.toString()}`).catch(() => null),
@@ -119,7 +128,7 @@ function ReportsComponent() {
         setLeads(Array.isArray(leadData) ? leadData : []);
       })
       .finally(() => setLoading(false));
-  }, [dateFrom, dateTo, activityType]);
+  }, [dateFrom, dateTo, activityType, segmentFilter]);
 
   useEffect(() => {
     setActivityPage(1);
@@ -211,8 +220,11 @@ function ReportsComponent() {
     if (activityType !== 'all') {
       parts.push(`ประเภท: ${formatTaskType(activityType, undefined, activityTypes)}`);
     }
+    if (segmentFilter !== 'all') {
+      parts.push(`กลุ่มลูกค้า: ${SEGMENT_LABELS[segmentFilter]}`);
+    }
     return parts.join(' · ');
-  }, [dateFrom, dateTo, activityType]);
+  }, [dateFrom, dateTo, activityType, segmentFilter]);
 
   const sortedActivities = useMemo(() => {
     const activities = Array.isArray(reportSummary?.activities) ? reportSummary.activities : [];
@@ -240,6 +252,8 @@ function ReportsComponent() {
       ['filter', 'dateFrom', dateFrom || 'all'],
       ['filter', 'dateTo', dateTo || 'all'],
       ['filter', 'activityType', activityType],
+      ['filter', 'segment', segmentFilter],
+      ...Object.entries(reportSummary?.leadsBySegment || {}).map(([segment, count]) => ['leadsBySegment', segment, count as number]),
       ['metrics', 'activitiesInRange', metrics.activitiesInRange ?? 0],
       ['metrics', 'hotLeadsInRange', metrics.hotLeadsInRange ?? 0],
       ['metrics', 'approvedQuotesInRange', metrics.approvedQuotesInRange ?? 0],
@@ -305,6 +319,7 @@ function ReportsComponent() {
     setDateTo('');
     setDatePreset(null);
     setActivityType('all');
+    setSegmentFilter('all');
     setActivitySearch('');
     setActivityPage(1);
     closeDetailModal();
@@ -375,7 +390,17 @@ function ReportsComponent() {
       </div>
 
       <section className="p-4 rounded-2xl glass-panel">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1">กลุ่มลูกค้า</label>
+            <select value={segmentFilter} onChange={e => setSegmentFilter(e.target.value as typeof segmentFilter)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200">
+              {(Object.keys(SEGMENT_LABELS) as Array<keyof typeof SEGMENT_LABELS>).map(key => (
+                <option key={key} value={key}>
+                  {SEGMENT_LABELS[key]}{key !== 'all' && reportSummary?.leadsBySegment ? ` (${reportSummary.leadsBySegment[key] ?? 0})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">จากวันที่</label>
             <input type="date" value={dateFrom} onChange={(e) => handleDateFromChange(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />

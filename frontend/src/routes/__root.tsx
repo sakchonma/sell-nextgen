@@ -33,7 +33,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   KeyRound,
-  History
+  History,
+  Building2,
+  GraduationCap
 } from 'lucide-react';
 
 export const Route = createRootRoute({
@@ -234,6 +236,13 @@ function RootComponent() {
 
   const isNavActive = (to: string) => {
     const pathname = location.pathname;
+    // Lead detail (/leads/:id) opened from the Corporate / University lists carries ?from=<segment>
+    const fromSegment = String((location.search as Record<string, unknown> | undefined)?.from || '');
+    if (pathname.startsWith('/leads/') && fromSegment) {
+      if (to === '/corporate') return fromSegment === 'corporate';
+      if (to === '/universities') return fromSegment === 'university';
+      if (to === '/leads') return false;
+    }
     return pathname === to || pathname.startsWith(`${to}/`);
   };
 
@@ -268,6 +277,26 @@ function RootComponent() {
       >
         <Users size={18} />
         <span className={collapsed ? 'lg:hidden' : ''}>Leads & โรงเรียน</span>
+      </Link>
+
+      <Link
+        to="/corporate"
+        aria-current={isNavActive('/corporate') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/corporate', collapsed)}
+      >
+        <Building2 size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>Leads องค์กร</span>
+      </Link>
+
+      <Link
+        to="/universities"
+        aria-current={isNavActive('/universities') ? 'page' : undefined}
+        onClick={onNavigate}
+        className={navLinkClass('/universities', collapsed)}
+      >
+        <GraduationCap size={18} />
+        <span className={collapsed ? 'lg:hidden' : ''}>Leads มหาวิทยาลัย</span>
       </Link>
 
       <Link

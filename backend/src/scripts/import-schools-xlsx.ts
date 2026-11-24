@@ -91,9 +91,13 @@ async function main() {
   const leadsCol = db.collection('leads');
   const oppsCol = db.collection('opportunities');
   const tasksCol = db.collection('tasks');
-  const calendarWipe = await tasksCol.deleteMany({ leadId: { $exists: true, $nin: [null, ''] } });
-  console.log(`[import-schools]: cleared calendar tasks=${calendarWipe.deletedCount}`);
-  const existingLeads = await leadsCol.find({}).toArray();
+  // Only school leads belong to this import. Corporate / university leads (segment field) are left untouched.
+  const schoolLeadFilter = { $or: [{ segment: { $exists: false } }, { segment: null }, { segment: 'school' }] };
+  const nonSchoolLeadIds = (await leadsCol.find({ segment: { $in: ['corporate', 'university'] } } as any).project({ _id: 1 }).toArray())
+    .map(lead => lead._id);
+  const calendarWipe = await tasksCol.deleteMany({ leadId: { $exists: true, $nin: [null, '', ...nonSchoolLeadIds] } } as any);
+  console.log(`[import-schools]: cleared calendar tasks=${calendarWipe.deletedCount} (kept corporate/university tasks)`);
+  const existingLeads = await leadsCol.find(schoolLeadFilter as any).toArray();
   const existingByKey = new Map(existingLeads.map(lead => [leadIdentityKey(lead as unknown as LeadImportDraft), lead]));
 
   let inserted = 0;
@@ -184,7 +188,7 @@ async function main() {
   }
 
   console.log(`[import-schools]: inserted=${inserted} updated=${updated}`);
-  const wipeP = await leadsCol.updateMany({}, { $unset: { documentStatus: '', statusOccurredAt: '' } });
+  const wipeP = await leadsCol.updateMany(schoolLeadFilter as any, { $unset: { documentStatus: '', statusOccurredAt: '' } });
   console.log(`[import-schools]: wiped column P fields=${wipeP.modifiedCount}`);
 }
 

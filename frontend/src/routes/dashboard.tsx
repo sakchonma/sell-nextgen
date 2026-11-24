@@ -12,8 +12,12 @@ import {
   FileCheck, 
   Calendar,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  School,
+  Building2,
+  GraduationCap
 } from 'lucide-react';
+import { normalizeSegment } from '../lib/lead-segments';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -64,6 +68,25 @@ function DashboardComponent() {
       overdueTasks
     };
   }, [leads, opportunities, tasks]);
+
+  const segmentCards = useMemo(() => {
+    const productionLeads = leads.filter(lead => !lead.isTest && !lead.archived);
+    const oppByLead = new Map(opportunities.map(opp => [opp.leadId, opp]));
+    const rows = [
+      { segment: 'school', title: 'โรงเรียน', to: '/leads', icon: School },
+      { segment: 'corporate', title: 'องค์กร', to: '/corporate', icon: Building2 },
+      { segment: 'university', title: 'มหาวิทยาลัย', to: '/universities', icon: GraduationCap },
+    ] as const;
+    return rows.map(row => {
+      const group = productionLeads.filter(lead => normalizeSegment(lead.segment) === row.segment);
+      const inPipeline = group.filter(lead => {
+        const opp = oppByLead.get(lead._id);
+        return opp && !['Won', 'Lost'].includes(opp.stage);
+      }).length;
+      const won = group.filter(lead => lead.stage === 'Won').length;
+      return { ...row, total: group.length, inPipeline, won };
+    });
+  }, [leads, opportunities]);
 
   const leadStatusBars = useMemo(() => {
     const productionLeads = leads.filter(lead => !lead.isTest);
@@ -165,7 +188,7 @@ function DashboardComponent() {
         {[
           { title: 'Pipeline ทั้งหมด (Active)', val: metrics.pipelineActive, desc: 'ดีลกำลังดำเนินการเสนอขาย', icon: TrendingUp, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', to: '/pipeline' },
           { title: 'ปิดการขายได้ (Won)', val: metrics.wonDeals, desc: 'สะสมในรอบปีการขายปัจจุบัน', icon: CheckCircle, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', to: '/pipeline' },
-          { title: 'Hot Leads ในมือ', val: metrics.hotLeads, desc: 'โรงเรียนระดับความเร่งด่วนสูง', icon: Zap, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', to: '/leads' },
+          { title: 'Hot Leads ในมือ', val: metrics.hotLeads, desc: 'ลูกค้าทุกกลุ่มที่ระดับความเร่งด่วนสูง', icon: Zap, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', to: '/leads' },
           { title: 'งานเกินกำหนด (Overdue)', val: metrics.overdueTasks, desc: 'งานรอดำเนินการที่เลยเวลาส่ง', icon: AlertCircle, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20', to: '/tasks' }
         ].map((item, idx) => (
           <Link key={idx} to={item.to as any} className="p-5 rounded-2xl glass-card flex flex-col justify-between h-32 hover:border-indigo-500/30 transition-all">
@@ -179,6 +202,23 @@ function DashboardComponent() {
               <span className="block font-display font-bold text-lg text-slate-100">{item.val}</span>
               <span className="block text-[9.5px] text-slate-500 mt-1">{item.desc}</span>
             </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* CUSTOMER GROUPS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {segmentCards.map(card => (
+          <Link key={card.segment} to={card.to} className="p-4 rounded-2xl glass-card flex items-center gap-4 hover:border-indigo-500/30 transition-all">
+            <div className="p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-300">
+              <card.icon size={18} />
+            </div>
+            <div className="flex-1">
+              <span className="block text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Leads {card.title}</span>
+              <span className="block font-display font-bold text-lg text-slate-100">{card.total.toLocaleString('th-TH')}</span>
+              <span className="block text-[10px] text-slate-500">ใน Pipeline {card.inPipeline} · Won {card.won}</span>
+            </div>
+            <ArrowRight size={14} className="text-slate-500" />
           </Link>
         ))}
       </div>

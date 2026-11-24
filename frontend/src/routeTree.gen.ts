@@ -9,17 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UniversitiesRouteImport } from './routes/universities'
 import { Route as TeamOverviewRouteImport } from './routes/team-overview'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as PipelineRouteImport } from './routes/pipeline'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationLogsRouteImport } from './routes/notification-logs'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DiscountSettingsRouteImport } from './routes/discount-settings'
 import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as CorporateRouteImport } from './routes/corporate'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
+import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as AiLoggerRouteImport } from './routes/ai-logger'
 import { Route as AdminCalendarRouteImport } from './routes/admin-calendar'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -31,10 +33,15 @@ import { Route as QuotesIndexRouteImport } from './routes/quotes.index'
 import { Route as LeadsIndexRouteImport } from './routes/leads.index'
 import { Route as RequestsCreateRouteImport } from './routes/requests.create'
 import { Route as QuotesBuildRouteImport } from './routes/quotes.build'
-import { Route as PortalLoginRouteImport } from './routes/portal.login'
 import { Route as PortalQuotesRouteImport } from './routes/portal.quotes'
+import { Route as PortalLoginRouteImport } from './routes/portal.login'
 import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
 
+const UniversitiesRoute = UniversitiesRouteImport.update({
+  id: '/universities',
+  path: '/universities',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TeamOverviewRoute = TeamOverviewRouteImport.update({
   id: '/team-overview',
   path: '/team-overview',
@@ -60,14 +67,14 @@ const PipelineRoute = PipelineRouteImport.update({
   path: '/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const NotificationLogsRoute = NotificationLogsRouteImport.update({
   id: '/notification-logs',
   path: '/notification-logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiscountSettingsRoute = DiscountSettingsRouteImport.update({
@@ -80,14 +87,19 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CalendarRoute = CalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
+const CorporateRoute = CorporateRouteImport.update({
+  id: '/corporate',
+  path: '/corporate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
   id: '/change-password',
   path: '/change-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AiLoggerRoute = AiLoggerRouteImport.update({
@@ -145,14 +157,14 @@ const QuotesBuildRoute = QuotesBuildRouteImport.update({
   path: '/quotes/build',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PortalLoginRoute = PortalLoginRouteImport.update({
-  id: '/portal/login',
-  path: '/portal/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PortalQuotesRoute = PortalQuotesRouteImport.update({
   id: '/portal/quotes',
   path: '/portal/quotes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalLoginRoute = PortalLoginRouteImport.update({
+  id: '/portal/login',
+  path: '/portal/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeadsLeadIdRoute = LeadsLeadIdRouteImport.update({
@@ -170,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/ai-logger': typeof AiLoggerRoute
   '/calendar': typeof CalendarRoute
   '/change-password': typeof ChangePasswordRoute
+  '/corporate': typeof CorporateRoute
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
@@ -179,10 +192,11 @@ export interface FileRoutesByFullPath {
   '/reports': typeof ReportsRoute
   '/tasks': typeof TasksRoute
   '/team-overview': typeof TeamOverviewRoute
+  '/universities': typeof UniversitiesRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
-  '/quotes/build': typeof QuotesBuildRoute
   '/portal/login': typeof PortalLoginRoute
   '/portal/quotes': typeof PortalQuotesRoute
+  '/quotes/build': typeof QuotesBuildRoute
   '/requests/create': typeof RequestsCreateRoute
   '/leads/': typeof LeadsIndexRoute
   '/quotes/': typeof QuotesIndexRoute
@@ -197,6 +211,7 @@ export interface FileRoutesByTo {
   '/ai-logger': typeof AiLoggerRoute
   '/calendar': typeof CalendarRoute
   '/change-password': typeof ChangePasswordRoute
+  '/corporate': typeof CorporateRoute
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
@@ -206,10 +221,11 @@ export interface FileRoutesByTo {
   '/reports': typeof ReportsRoute
   '/tasks': typeof TasksRoute
   '/team-overview': typeof TeamOverviewRoute
+  '/universities': typeof UniversitiesRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
-  '/quotes/build': typeof QuotesBuildRoute
   '/portal/login': typeof PortalLoginRoute
   '/portal/quotes': typeof PortalQuotesRoute
+  '/quotes/build': typeof QuotesBuildRoute
   '/requests/create': typeof RequestsCreateRoute
   '/leads': typeof LeadsIndexRoute
   '/quotes': typeof QuotesIndexRoute
@@ -225,6 +241,7 @@ export interface FileRoutesById {
   '/ai-logger': typeof AiLoggerRoute
   '/calendar': typeof CalendarRoute
   '/change-password': typeof ChangePasswordRoute
+  '/corporate': typeof CorporateRoute
   '/dashboard': typeof DashboardRoute
   '/discount-settings': typeof DiscountSettingsRoute
   '/login': typeof LoginRoute
@@ -234,10 +251,11 @@ export interface FileRoutesById {
   '/reports': typeof ReportsRoute
   '/tasks': typeof TasksRoute
   '/team-overview': typeof TeamOverviewRoute
+  '/universities': typeof UniversitiesRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
-  '/quotes/build': typeof QuotesBuildRoute
   '/portal/login': typeof PortalLoginRoute
   '/portal/quotes': typeof PortalQuotesRoute
+  '/quotes/build': typeof QuotesBuildRoute
   '/requests/create': typeof RequestsCreateRoute
   '/leads/': typeof LeadsIndexRoute
   '/quotes/': typeof QuotesIndexRoute
@@ -254,6 +272,7 @@ export interface FileRouteTypes {
     | '/ai-logger'
     | '/calendar'
     | '/change-password'
+    | '/corporate'
     | '/dashboard'
     | '/discount-settings'
     | '/login'
@@ -263,10 +282,11 @@ export interface FileRouteTypes {
     | '/reports'
     | '/tasks'
     | '/team-overview'
+    | '/universities'
     | '/leads/$leadId'
-    | '/quotes/build'
     | '/portal/login'
     | '/portal/quotes'
+    | '/quotes/build'
     | '/requests/create'
     | '/leads/'
     | '/quotes/'
@@ -281,6 +301,7 @@ export interface FileRouteTypes {
     | '/ai-logger'
     | '/calendar'
     | '/change-password'
+    | '/corporate'
     | '/dashboard'
     | '/discount-settings'
     | '/login'
@@ -290,10 +311,11 @@ export interface FileRouteTypes {
     | '/reports'
     | '/tasks'
     | '/team-overview'
+    | '/universities'
     | '/leads/$leadId'
-    | '/quotes/build'
     | '/portal/login'
     | '/portal/quotes'
+    | '/quotes/build'
     | '/requests/create'
     | '/leads'
     | '/quotes'
@@ -308,6 +330,7 @@ export interface FileRouteTypes {
     | '/ai-logger'
     | '/calendar'
     | '/change-password'
+    | '/corporate'
     | '/dashboard'
     | '/discount-settings'
     | '/login'
@@ -317,10 +340,11 @@ export interface FileRouteTypes {
     | '/reports'
     | '/tasks'
     | '/team-overview'
+    | '/universities'
     | '/leads/$leadId'
-    | '/quotes/build'
     | '/portal/login'
     | '/portal/quotes'
+    | '/quotes/build'
     | '/requests/create'
     | '/leads/'
     | '/quotes/'
@@ -336,6 +360,7 @@ export interface RootRouteChildren {
   AiLoggerRoute: typeof AiLoggerRoute
   CalendarRoute: typeof CalendarRoute
   ChangePasswordRoute: typeof ChangePasswordRoute
+  CorporateRoute: typeof CorporateRoute
   DashboardRoute: typeof DashboardRoute
   DiscountSettingsRoute: typeof DiscountSettingsRoute
   LoginRoute: typeof LoginRoute
@@ -345,10 +370,11 @@ export interface RootRouteChildren {
   ReportsRoute: typeof ReportsRoute
   TasksRoute: typeof TasksRoute
   TeamOverviewRoute: typeof TeamOverviewRoute
+  UniversitiesRoute: typeof UniversitiesRoute
   LeadsLeadIdRoute: typeof LeadsLeadIdRoute
-  QuotesBuildRoute: typeof QuotesBuildRoute
   PortalLoginRoute: typeof PortalLoginRoute
   PortalQuotesRoute: typeof PortalQuotesRoute
+  QuotesBuildRoute: typeof QuotesBuildRoute
   RequestsCreateRoute: typeof RequestsCreateRoute
   LeadsIndexRoute: typeof LeadsIndexRoute
   QuotesIndexRoute: typeof QuotesIndexRoute
@@ -357,6 +383,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/universities': {
+      id: '/universities'
+      path: '/universities'
+      fullPath: '/universities'
+      preLoaderRoute: typeof UniversitiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/team-overview': {
       id: '/team-overview'
       path: '/team-overview'
@@ -392,18 +425,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/notification-logs': {
       id: '/notification-logs'
       path: '/notification-logs'
       fullPath: '/notification-logs'
       preLoaderRoute: typeof NotificationLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/discount-settings': {
@@ -420,11 +453,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/calendar': {
-      id: '/calendar'
-      path: '/calendar'
-      fullPath: '/calendar'
-      preLoaderRoute: typeof CalendarRouteImport
+    '/corporate': {
+      id: '/corporate'
+      path: '/corporate'
+      fullPath: '/corporate'
+      preLoaderRoute: typeof CorporateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password': {
@@ -432,6 +465,13 @@ declare module '@tanstack/react-router' {
       path: '/change-password'
       fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ai-logger': {
@@ -511,18 +551,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuotesBuildRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/portal/login': {
-      id: '/portal/login'
-      path: '/portal/login'
-      fullPath: '/portal/login'
-      preLoaderRoute: typeof PortalLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/portal/quotes': {
       id: '/portal/quotes'
       path: '/portal/quotes'
       fullPath: '/portal/quotes'
       preLoaderRoute: typeof PortalQuotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal/login': {
+      id: '/portal/login'
+      path: '/portal/login'
+      fullPath: '/portal/login'
+      preLoaderRoute: typeof PortalLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/leads/$leadId': {
@@ -544,6 +584,7 @@ const rootRouteChildren: RootRouteChildren = {
   AiLoggerRoute: AiLoggerRoute,
   CalendarRoute: CalendarRoute,
   ChangePasswordRoute: ChangePasswordRoute,
+  CorporateRoute: CorporateRoute,
   DashboardRoute: DashboardRoute,
   DiscountSettingsRoute: DiscountSettingsRoute,
   LoginRoute: LoginRoute,
@@ -553,10 +594,11 @@ const rootRouteChildren: RootRouteChildren = {
   ReportsRoute: ReportsRoute,
   TasksRoute: TasksRoute,
   TeamOverviewRoute: TeamOverviewRoute,
+  UniversitiesRoute: UniversitiesRoute,
   LeadsLeadIdRoute: LeadsLeadIdRoute,
-  QuotesBuildRoute: QuotesBuildRoute,
   PortalLoginRoute: PortalLoginRoute,
   PortalQuotesRoute: PortalQuotesRoute,
+  QuotesBuildRoute: QuotesBuildRoute,
   RequestsCreateRoute: RequestsCreateRoute,
   LeadsIndexRoute: LeadsIndexRoute,
   QuotesIndexRoute: QuotesIndexRoute,

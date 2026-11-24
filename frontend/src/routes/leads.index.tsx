@@ -66,6 +66,7 @@ function LeadsIndexComponent() {
 
   const buildLeadQuery = useCallback((offset: number) => {
     const params = new URLSearchParams({
+      segment: 'school',
       limit: String(LEADS_PAGE_SIZE),
       offset: String(offset),
       search,
@@ -127,7 +128,7 @@ function LeadsIndexComponent() {
   }, [user]);
 
   useEffect(() => {
-    apiFetch('/api/leads/locations')
+    apiFetch('/api/leads/locations?segment=school')
       .then(data => setLocationOptions({
         districts: Array.isArray(data?.districts) ? data.districts : [],
         provinces: Array.isArray(data?.provinces) ? data.provinces : []
@@ -165,7 +166,7 @@ function LeadsIndexComponent() {
         setNewLeadCampaign('');
         setNewLeadIsTest(false);
         fetchLeads('reset');
-        apiFetch('/api/leads/locations')
+        apiFetch('/api/leads/locations?segment=school')
           .then(data => setLocationOptions({
             districts: Array.isArray(data?.districts) ? data.districts : [],
             provinces: Array.isArray(data?.provinces) ? data.provinces : []
@@ -255,7 +256,7 @@ function LeadsIndexComponent() {
             <input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={e => handleImportCsv(e.target.files?.[0])} />
           </label>
           <a
-            href="/api/leads/export.csv"
+            href="/api/leads/export.csv?segment=school"
             className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold text-slate-200 border border-slate-700"
           >
             Export CSV

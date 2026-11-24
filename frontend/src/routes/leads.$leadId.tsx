@@ -24,6 +24,8 @@ import { formatTaskType } from '../lib/task-types';
 import { apiFetch, apiJson } from '../lib/api';
 import { wrapFormSubmit } from '../hooks/useSaveConfirm';
 import { ModalShell } from '../components/ui';
+import { SegmentProfilePanel } from '../components/SegmentProfilePanel';
+import { segmentConfigForLead } from '../lib/lead-segments';
 import { FuzzySearchSelect } from '../components/fuzzy-search-select';
 import { provinceToZone } from '../lib/province-zone';
 import {
@@ -418,15 +420,18 @@ function LeadDetailComponent() {
   const handleArchiveLead = () => {
     if (!window.confirm('ยืนยัน archive lead นี้?')) return;
     apiFetch(`/api/leads/${leadId}`, { method: 'DELETE' })
-      .then(() => navigate({ to: '/leads' }))
+      .then(() => navigate({ to: segmentConfigForLead(lead).path }))
       .catch(err => console.error('Failed to archive lead:', err));
   };
+
+  const segmentConfig = segmentConfigForLead(lead);
+  const isSchool = segmentConfig.segment === 'school';
 
   return (
     <div className="space-y-6 text-slate-100 text-left animate-fade-in">
       {/* breadcrumb */}
       <div className="flex items-center gap-1 text-[11px] text-slate-400">
-        <Link to="/leads" className="hover:text-indigo-400">Leads & โรงเรียน</Link>
+        <Link to={segmentConfig.path} className="hover:text-indigo-400">{segmentConfig.menuLabel}</Link>
         <ChevronRight size={12} />
         <span className="text-slate-300 truncate max-w-[200px]">{lead.schoolName}</span>
       </div>
@@ -439,6 +444,12 @@ function LeadDetailComponent() {
           </div>
           <div>
             <h2 className="text-lg md:text-xl font-bold font-display text-slate-100">{lead.schoolName}</h2>
+            {!isSchool && (
+              <span className="inline-block mt-1 px-2 py-0.5 rounded text-[9px] font-bold border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
+                {segmentConfig.segment === 'corporate' ? 'ลูกค้าองค์กร' : 'มหาวิทยาลัย / คณะ'}
+                {lead.segmentProfile?.tier ? ` · เกรด ${lead.segmentProfile.tier}` : ''}
+              </span>
+            )}
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-400">
                 <MapPin size={10} /> {lead.address} ({lead.zone})
@@ -650,9 +661,10 @@ function LeadDetailComponent() {
 
           {/* Notes and History */}
           <div className="lg:col-span-2 space-y-6">
+            {!isSchool && <SegmentProfilePanel lead={lead} onUpdated={setLead} />}
             <div className="p-6 rounded-2xl glass-panel">
               <div className="flex items-center justify-between gap-3 mb-4">
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">ข้อมูลโรงเรียนและข้อมูลนำเข้า</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">{isSchool ? 'ข้อมูลโรงเรียนและข้อมูลนำเข้า' : 'ข้อมูลพื้นฐานและสถานะการขาย'}</h3>
                 <span className="text-[10px] text-slate-500">แก้ไขข้อมูลจากไฟล์ Excel หรือจากหน้าเว็บได้</span>
               </div>
               <form onSubmit={wrapFormSubmit(handleSaveProfile)} className="space-y-4">
@@ -682,7 +694,7 @@ function LeadDetailComponent() {
                     <input value={editProfile.campaign} onChange={e => handleEditProfileChange('campaign', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    ชื่อโรงเรียน
+                    {segmentConfig.nameLabel}
                     <input value={editProfile.schoolName} onChange={e => handleEditProfileChange('schoolName', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" required />
                   </label>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
@@ -720,6 +732,8 @@ function LeadDetailComponent() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {isSchool && (
+                  <>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     ระดับชั้น
                     <input value={editProfile.gradeLevels} onChange={e => handleEditProfileChange('gradeLevels', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
@@ -740,6 +754,8 @@ function LeadDetailComponent() {
                     ขนาดโรงเรียน
                     <input value={editProfile.schoolSize} onChange={e => handleEditProfileChange('schoolSize', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
                   </label>
+                  </>
+                  )}
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     ติดต่อลูกค้าล่าสุด
                     <input type="date" value={editProfile.lastContactedAt} onChange={e => handleEditProfileChange('lastContactedAt', e.target.value)} className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-800 bg-[#090d16] text-xs text-slate-200" />
@@ -788,7 +804,7 @@ function LeadDetailComponent() {
 
                 <div className="flex justify-end">
                   <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg cursor-pointer">
-                    <Save size={14} /> บันทึกข้อมูลโรงเรียน
+                    <Save size={14} /> {isSchool ? 'บันทึกข้อมูลโรงเรียน' : 'บันทึกข้อมูล'}
                   </button>
                 </div>
               </form>

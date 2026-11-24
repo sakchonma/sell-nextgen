@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { normalizeSegment, type LeadSegment } from '../lib/lead-segments';
 import { wrapFormSubmit, requestSaveConfirm } from '../hooks/useSaveConfirm';
 import { filterLeadsBySearch } from '../lib/lead-search';
 import { SALES_FUNNEL_STAGES, getPipelineColumnStyle, normalizeLeadStage, resolveLeadPipelineValue, stageRequiresEventAt, getStageEventAtLabel, formatThaiDate, APPOINTMENT_KIND_OPTIONS, DOCUMENT_CHANNEL_OPTIONS } from '../lib/sales-funnel-stages';
@@ -25,6 +26,8 @@ export const Route = createRoute({
   path: '/pipeline',
   component: PipelineComponent,
 });
+
+const SEGMENT_BADGE: Record<LeadSegment, string> = { school: 'โรงเรียน', corporate: 'องค์กร', university: 'มหาวิทยาลัย' };
 
 const STAGES = SALES_FUNNEL_STAGES.map(stage => ({
   id: stage.code,
@@ -45,6 +48,7 @@ function PipelineComponent() {
   const [forecast, setForecast] = useState<any[]>([]);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [stageFilter, setStageFilter] = useState<string>('All');
+  const [segmentFilter, setSegmentFilter] = useState<'All' | LeadSegment>('All');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [pendingStage, setPendingStage] = useState<{ lead: any; stage: string } | null>(null);
@@ -116,8 +120,12 @@ function PipelineComponent() {
   }, []);
 
   const pipelineLeads = useMemo(
-    () => leads.filter(lead => !lead.archived && !lead.isTest),
-    [leads]
+    () => leads.filter(lead =>
+      !lead.archived &&
+      !lead.isTest &&
+      (segmentFilter === 'All' || normalizeSegment(lead.segment) === segmentFilter)
+    ),
+    [leads, segmentFilter]
   );
 
   const oppByLeadId = useMemo(() => {
@@ -252,6 +260,21 @@ function PipelineComponent() {
 
       {error && <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{error}</div>}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] text-slate-500">กลุ่มลูกค้า:</span>
+        {(['All', 'school', 'corporate', 'university'] as const).map(segment => (
+          <button
+            key={segment}
+            type="button"
+            onClick={() => setSegmentFilter(segment)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${segmentFilter === segment ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-800 text-slate-400 hover:bg-slate-800/60'}`}
+          >
+            {segment === 'All' ? 'ทุกกลุ่ม' : SEGMENT_BADGE[segment]}
+            {' '}({leads.filter(lead => !lead.archived && !lead.isTest && (segment === 'All' || normalizeSegment(lead.segment) === segment)).length})
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -318,6 +341,11 @@ function PipelineComponent() {
                         <Building size={10} /> {lead.zone || 'ไม่ระบุโซน'}
                       </span>
                       <h4 className="text-xs font-bold text-slate-200 mt-1.5 line-clamp-2 leading-relaxed">{lead.schoolName}</h4>
+                      {normalizeSegment(lead.segment) !== 'school' && (
+                        <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                          {SEGMENT_BADGE[normalizeSegment(lead.segment)]}
+                        </span>
+                      )}
                       {opp?.title && opp.title !== `ดีล ${lead.schoolName}` && (
                         <p className="text-[10px] text-slate-500 mt-1 line-clamp-1">{opp.title}</p>
                       )}
