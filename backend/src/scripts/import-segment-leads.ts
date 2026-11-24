@@ -1,9 +1,11 @@
 /**
- * Import Corporate + University leads (data/segment-leads.json) into MongoDB.
+ * Import Corporate + University leads into MongoDB.
  *
  * Usage (from backend/):
- *   npm run import:segments -- --dry-run              # ตรวจไฟล์ ไม่เขียน DB
- *   npm run import:segments                            # นำเข้า/อัปเดต (รันซ้ำได้)
+ *   npm run import:segments:excel -- --dry-run        # อ่าน Excel ใน data/imports/ แล้วสรุป ไม่เขียน DB
+ *   npm run import:segments:excel                      # อ่าน Excel ใน data/imports/ → นำเข้า/อัปเดต
+ *   npm run import:segments -- --dry-run              # ใช้ data/segment-leads.json (snapshot ล่าสุด)
+ *   npm run import:segments                            # นำเข้า/อัปเดตจาก JSON (รันซ้ำได้)
  *   npm run import:segments -- --owner=manager@nextgen.co.th
  *   npm run import:segments -- --rollback --yes        # ลบข้อมูลที่นำเข้า (เฉพาะที่ยังไม่มีใบเสนอราคา)
  *
@@ -23,15 +25,20 @@ import {
   summarizeRecords,
   validateRecord,
   type SegmentImportFile,
+  type SegmentImportRecord,
 } from '../lib/segment-import.js';
+import { readSegmentWorkbook } from '../lib/segment-excel.js';
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const rollback = args.includes('--rollback');
 const confirmed = args.includes('--yes');
 const ownerArg = args.find(arg => arg.startsWith('--owner='))?.split('=')[1];
+// `--excel=<folder>` overrides the bare `--excel` that the npm script already passes.
+const excelArg = args.find(arg => arg.startsWith('--excel=')) || args.find(arg => arg === '--excel');
 const fileArg = args.find(arg => !arg.startsWith('--'));
 const defaultFile = fileURLToPath(new URL('../../data/segment-leads.json', import.meta.url));
+const defaultExcelDir = fileURLToPath(new URL('../../data/imports', import.meta.url));
 
 function log(message: string, extra?: unknown) {
   console.log(`[import-segments]: ${message}`, extra === undefined ? '' : extra);
@@ -44,6 +51,45 @@ function loadFile(): SegmentImportFile {
   if (!Array.isArray(parsed.records)) throw new Error('ไฟล์ไม่มี records[]');
   log(`file=${filePath}`);
   return parsed;
+}
+
+/**
+ * Read every .xlsx in the imports folder. Files are recognised by their sheets (corporate / university),
+ * oldest first, so when two files describe the same row (same L01 / FAC-001) the newest file wins.
+ * Rows that disappear from the file are left in the CRM untouched.
+ */
+async function loadExcelFolder(): Promise<SegmentImportFile> {
+  const dir = path.resolve(excelArg?.includes('=') ? excelArg.split('=')[1] : defaultExcelDir);
+  if (!fs.existsSync(dir)) throw new Error(`ไม่พบโฟลเดอร์: ${dir}`);
+  const files = fs.readdirSync(dir)
+    .filter(name => /\.xlsx$/i.test(name) && !name.startsWith('~$'))
+    .map(name => ({ name, full: path.join(dir, name), mtime: fs.statSync(path.join(dir, name)).mtimeMs }))
+    .sort((a, b) => a.mtime - b.mtime);
+  if (!files.length) throw new Error(`ไม่มีไฟล์ .xlsx ใน ${dir} — วางไฟล์ Corporate / Faculty แล้วรันใหม่`);
+
+  const byRef = new Map<string, SegmentImportRecord>();
+  const generatedFrom: Record<string, string> = {};
+  for (const file of files) {
+    const { kind, records } = await readSegmentWorkbook(file.full);
+    if (!kind) {
+      log(`skip ${file.name} (ไม่ใช่ไฟล์ Corporate หรือ Faculty)`);
+      continue;
+    }
+    log(`read ${file.name} → ${kind} ${records.length} รายการ`);
+    generatedFrom[kind] = file.name;
+    for (const record of records) byRef.set(record.externalRef, record);
+  }
+  if (!byRef.size) throw new Error('ไม่พบข้อมูลที่นำเข้าได้ในไฟล์ Excel');
+  const records = [...byRef.values()].sort((a, b) =>
+    a.segment.localeCompare(b.segment) || a.externalRef.localeCompare(b.externalRef, 'en', { numeric: true })
+  );
+  return { generatedFrom, records };
+}
+
+/** Keep data/segment-leads.json as a record of exactly what was last imported (commit it if you like). */
+function writeSnapshot(file: SegmentImportFile) {
+  fs.writeFileSync(defaultFile, `${JSON.stringify(file, null, 1)}\n`, 'utf8');
+  log(`snapshot → ${path.relative(process.cwd(), defaultFile)}`);
 }
 
 async function connect() {
@@ -77,7 +123,7 @@ async function runRollback() {
 }
 
 async function runImport() {
-  const file = loadFile();
+  const file = excelArg ? await loadExcelFolder() : loadFile();
   const problems = file.records.flatMap(validateRecord);
   log('summary', summarizeRecords(file.records));
   if (problems.length) {
@@ -91,6 +137,7 @@ async function runImport() {
     return;
   }
 
+  if (excelArg) writeSnapshot(file);
   const db = await connect();
   const users = await db.collection('users').find({}).project({ _id: 1, name: 1, email: 1, roleId: 1 }).toArray();
   const owner = ownerArg
@@ -110,6 +157,9 @@ async function runImport() {
   let updated = 0;
   let opportunities = 0;
   let calendarTasks = 0;
+  let stageChanges = 0;
+  let followUpChanges = 0;
+  const addedRefs: string[] = [];
 
   for (const record of file.records) {
     const existing = await leadsCol.findOne({ externalRef: record.externalRef } as any) as any;
@@ -118,15 +168,21 @@ async function runImport() {
       const { _id, ...fields } = doc as any;
       await leadsCol.updateOne({ _id } as any, { $set: fields });
       updated += 1;
+      if (existing.stage !== doc.stage) stageChanges += 1;
+      if ((existing.nextCallAt || '') !== (doc.nextCallAt || '')) followUpChanges += 1;
     } else {
       await leadsCol.insertOne(doc as any);
       inserted += 1;
+      addedRefs.push(record.externalRef);
     }
 
     const previousStage = existing ? existing.stage : 'TargetSchool';
     const opp = await syncLeadStageToOpportunity(doc as any, previousStage, ownerId, 'Excel import (segment)');
     if (opp) opportunities += 1;
-    if (doc.nextCallAt) {
+    // Only touch the calendar when the follow-up date is new or changed: re-syncing an unchanged date
+    // would reopen a follow-up task the team already marked done.
+    const nextCallChanged = !existing || (existing.nextCallAt || '') !== (doc.nextCallAt || '');
+    if (doc.nextCallAt && nextCallChanged) {
       await syncLeadNextCallAt(doc as any, ownerId);
       calendarTasks += 1;
     }
@@ -138,11 +194,12 @@ async function runImport() {
     actorEmail: 'script:import-segment-leads',
     action: 'lead.import_segments',
     targetType: 'lead',
-    details: { inserted, updated, opportunities, calendarTasks, source: file.generatedFrom },
+    details: { inserted, updated, stageChanges, followUpChanges, opportunities, calendarTasks, source: file.generatedFrom },
     createdAt: now,
   } as any);
 
-  log(`done inserted=${inserted} updated=${updated} opportunitiesSynced=${opportunities} calendarTasks=${calendarTasks}`);
+  log(`done inserted=${inserted} updated=${updated} stageChanges=${stageChanges} followUpChanges=${followUpChanges} opportunitiesSynced=${opportunities} calendarTasks=${calendarTasks}`);
+  if (addedRefs.length) log(`new: ${addedRefs.join(', ')}`);
 }
 
 (rollback ? runRollback() : runImport())

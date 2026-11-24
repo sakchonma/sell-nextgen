@@ -72,16 +72,56 @@ export interface BuildSegmentLeadOptions {
   existing?: (Lead & Record<string, any>) | null;
 }
 
+const STAGE_RANK: Record<string, number> = {
+  TargetSchool: 0, Called: 1, DocumentSent: 2, Appointed: 3, Presented: 4, DemoWorkshop: 5, Quotation: 6, Won: 7, Lost: 7,
+};
+
+/** What the spreadsheet said last time it was imported — lets a re-import tell "the file changed" from "a user changed the CRM". */
+export interface ImportSnapshot {
+  stage: string;
+  nextCallAt: string | null;
+  importedAt: Date;
+}
+
+/**
+ * Stage to keep on re-import.
+ * - CRM still at TargetSchool → take the file's stage.
+ * - The file's stage changed since the last import and moves the deal forward (or closes it as Won/Lost) → take it.
+ * - Otherwise keep the CRM stage, so the file never rolls back work done in the app.
+ */
+export function resolveReimportStage(existingStage: SalesFunnelStage, importedStage: SalesFunnelStage, snapshot?: ImportSnapshot) {
+  if (existingStage === 'TargetSchool') return importedStage;
+  const fileChanged = snapshot?.stage !== importedStage;
+  if (!fileChanged || importedStage === existingStage) return existingStage;
+  const closes = importedStage === 'Won' || importedStage === 'Lost';
+  return closes || STAGE_RANK[importedStage] > STAGE_RANK[existingStage] ? importedStage : existingStage;
+}
+
+/** nextCallAt to keep on re-import: a new date in the file wins, otherwise the CRM's date stays. */
+export function resolveReimportNextCall(existingNextCall: string | undefined, importedNextCall: string | undefined, snapshot?: ImportSnapshot) {
+  if (importedNextCall && importedNextCall !== (snapshot?.nextCallAt ?? undefined) && snapshot) return importedNextCall;
+  return existingNextCall || importedNextCall;
+}
+
+/** Keep every contact users already have; add file contacts whose name is not there yet. */
+export function mergeContacts(existing: Lead['contacts'] | undefined, imported: Lead['contacts']) {
+  const current = existing || [];
+  const names = new Set(current.map(contact => contact.name.trim().toLowerCase()));
+  return [...current, ...imported.filter(contact => !names.has(contact.name.trim().toLowerCase()))];
+}
+
 /**
  * Build the lead document to write.
- * Re-running the import refreshes the research data but never rolls back work done in the CRM:
- * stage only moves forward from "TargetSchool", and owner / notes / contacts edited by users are kept.
+ * Re-running the import refreshes the research data (segmentProfile, name, province) every time.
+ * For CRM fields, a change in the file wins only when it moves the deal forward / sets a new follow-up date;
+ * owner, notes and contacts users already edited are kept (new contacts from the file are added).
  */
 export function buildSegmentLeadDoc(record: SegmentImportRecord, options: BuildSegmentLeadOptions) {
   const { ownerId, actorId, now, existing } = options;
   const importedStage = normalizeLeadStage(record.stage || 'TargetSchool') as SalesFunnelStage;
   const existingStage = existing ? (normalizeLeadStage(existing.stage) as SalesFunnelStage) : undefined;
-  const stage = existingStage && existingStage !== 'TargetSchool' ? existingStage : importedStage;
+  const snapshot = existing?.importSnapshot as ImportSnapshot | undefined;
+  const stage = existingStage ? resolveReimportStage(existingStage, importedStage, snapshot) : importedStage;
   const contacts = (record.contacts || []).map(sanitizeContact).filter(Boolean) as Lead['contacts'];
   const province = record.province || '';
   const meetingArea = typeof record.profile.meetingArea === 'string' ? record.profile.meetingArea : '';
@@ -97,6 +137,7 @@ export function buildSegmentLeadDoc(record: SegmentImportRecord, options: BuildS
     zone: record.zone || 'ภาคกลาง',
     campaign: record.campaign,
     source: 'Excel Research',
+    importSnapshot: { stage: importedStage, nextCallAt: record.nextCallAt ?? null, importedAt: now } as ImportSnapshot,
     updatedAt: now,
   };
 
@@ -107,8 +148,8 @@ export function buildSegmentLeadDoc(record: SegmentImportRecord, options: BuildS
       stage,
       status: statusFromStage(stage),
       score: existingStage === stage ? existing.score : scoreFromStage(stage),
-      contacts: existing.contacts?.length ? existing.contacts : contacts,
-      nextCallAt: existing.nextCallAt || record.nextCallAt,
+      contacts: mergeContacts(existing.contacts, contacts),
+      nextCallAt: resolveReimportNextCall(existing.nextCallAt, record.nextCallAt, snapshot),
       lastContactedAt: existing.lastContactedAt || record.lastContactedAt,
     };
   }

@@ -16,7 +16,8 @@
     "backfill:activity-sync": "ALLOW_MEMORY_DB=false tsx src/scripts/backfill-activity-sync.ts",
     "backfill:next-call-calendar": "ALLOW_MEMORY_DB=false tsx src/scripts/backfill-next-call-calendar.ts",
     "import:schools": "ALLOW_MEMORY_DB=false tsx src/scripts/import-schools-xlsx.ts",
-    "import:segments": "ALLOW_MEMORY_DB=false tsx src/scripts/import-segment-leads.ts"
+    "import:segments": "ALLOW_MEMORY_DB=false tsx src/scripts/import-segment-leads.ts",
+    "import:segments:excel": "ALLOW_MEMORY_DB=false tsx src/scripts/import-segment-leads.ts --excel"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -24,9 +25,11 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.2",
     "mongodb": "^7.2.0",
     "morgan": "^1.10.1",
     "pdfkit": "^0.19.1",

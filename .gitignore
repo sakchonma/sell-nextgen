@@ -13,3 +13,7 @@ cookie.txt
 coverage/
 .vite/
 frontend/.tanstack/
+
+# Excel research files dropped in for import:segments:excel
+backend/data/imports/*.xlsx
+backend/data/imports/~$*

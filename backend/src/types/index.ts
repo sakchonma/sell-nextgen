@@ -61,6 +61,8 @@ export interface Lead {
   externalRef?: string;
   /** Segment-specific research fields imported from Excel (see config/lead-segments.ts). */
   segmentProfile?: Record<string, unknown>;
+  /** What the spreadsheet said at the last import (stage, nextCallAt) — used to detect changes in the file on re-import. */
+  importSnapshot?: { stage: string; nextCallAt: string | null; importedAt: Date };
   address: string;
   zone: string;
   status: 'Cold' | 'Warm' | 'Hot' | 'Customer';
