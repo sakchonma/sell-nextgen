@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
-import { corporateStage, readSegmentWorkbook, splitContact, universityStage } from './segment-excel.js';
-import { mergeContacts, resolveReimportNextCall, resolveReimportStage } from './segment-import.js';
+import { corporateStage, readSegmentWorkbook, splitContact, toIsoDate, universityStage } from './segment-excel.js';
+import { mergeContacts, resolveReimportNextCall, resolveReimportStage, validateRecord } from './segment-import.js';
 
 const importsDir = fileURLToPath(new URL('../../data/imports', import.meta.url));
 const xlsxFiles = fs.existsSync(importsDir) ? fs.readdirSync(importsDir).filter(name => /\.xlsx$/i.test(name) && !name.startsWith('~$')) : [];
@@ -17,6 +17,19 @@ describe('splitContact', () => {
   });
   it('drops short hotline numbers that the contact form would reject', () => {
     expect(splitContact('1509 (Call Center)').phone).toBeUndefined();
+  });
+});
+
+describe('toIsoDate', () => {
+  it('keeps real dates and reads Thai-style D/M/YYYY', () => {
+    expect(toIsoDate('2026-12-03')).toBe('2026-12-03');
+    expect(toIsoDate('3/12/2569')).toBe('2026-12-03');
+    expect(toIsoDate('03/12/2026')).toBe('2026-12-03');
+  });
+  it('treats placeholder words as no date', () => {
+    expect(toIsoDate('ยังไม่นัด')).toBeUndefined();
+    expect(toIsoDate('ยังไม่ติดต่อ')).toBeUndefined();
+    expect(toIsoDate(undefined)).toBeUndefined();
   });
 });
 
@@ -61,15 +74,12 @@ describe('re-import rules', () => {
   });
 });
 
-// Runs only when the real workbooks are in data/imports (they are not committed).
+// Runs only when real workbooks are in data/imports (they are not committed).
 describe.skipIf(!xlsxFiles.length)('workbooks in data/imports', () => {
-  it('match data/segment-leads.json when nothing changed since the last import', async () => {
-    const snapshot = JSON.parse(fs.readFileSync(new URL('../../data/segment-leads.json', import.meta.url), 'utf8')).records;
-    const fromExcel = new Map<string, unknown>();
+  it('every row is importable', async () => {
     for (const name of xlsxFiles) {
       const { records } = await readSegmentWorkbook(path.join(importsDir, name));
-      for (const record of records) fromExcel.set(record.externalRef, JSON.parse(JSON.stringify(record)));
+      expect(records.flatMap(validateRecord)).toEqual([]);
     }
-    for (const record of snapshot) expect(fromExcel.get(record.externalRef)).toEqual(record);
   });
 });

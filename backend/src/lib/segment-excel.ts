@@ -87,6 +87,28 @@ export function splitContact(raw: unknown): { phone?: string; emails: string[] }
   return { emails };
 }
 
+/**
+ * A date the CRM can schedule on, as YYYY-MM-DD, or undefined.
+ * Accepts real Excel dates (already YYYY-MM-DD), "YYYY-MM-DD ...", and D/M/YYYY in ค.ศ. or พ.ศ.
+ * Placeholder words in a date column ("ยังไม่นัด", "รอยืนยัน") → undefined; the text itself stays in segmentProfile.
+ */
+export function toIsoDate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/.exec(text);
+  if (dmy) {
+    const year = Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+    const month = Number(dmy[2]);
+    const day = Number(dmy[1]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  return undefined;
+}
+
 // ------------------------------------------------------------------ corporate
 const REGION_TO_ZONE: Record<string, string> = {
   กลาง: 'ภาคกลาง',
@@ -188,8 +210,8 @@ export function corporateRecords(wb: ExcelJS.Workbook): SegmentImportRecord[] {
       province: row['จังหวัดเป้าหมาย'] as string | undefined,
       zone: REGION_TO_ZONE[String(row['ภูมิภาค'])] || 'ภาคกลาง',
       stage: corporateStage(deal['ขั้นตอน']),
-      lastContactedAt: profile.lastContactedAt,
-      nextCallAt: profile.nextAppointmentAt,
+      lastContactedAt: toIsoDate(profile.lastContactedAt),
+      nextCallAt: toIsoDate(profile.nextAppointmentAt),
       campaign: 'Corporate Sales Launch 2569',
       contacts,
       profile,
@@ -282,7 +304,7 @@ export function universityRecords(wb: ExcelJS.Workbook): SegmentImportRecord[] {
       province,
       zone: 'ภาคกลาง',
       stage: universityStage(profile.contactStatus),
-      nextCallAt: profile.followUpDate,
+      nextCallAt: toIsoDate(profile.followUpDate),
       campaign: 'BEYOND FIRST MEET — Faculty Orientation 2570',
       contacts: leadContacts,
       profile,

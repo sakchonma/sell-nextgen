@@ -20,14 +20,10 @@ import { ModalShell } from './ui';
 import { FuzzySearchSelect } from './fuzzy-search-select';
 import { provinceToZone } from '../lib/province-zone';
 import {
-  APPOINTMENT_KIND_OPTIONS,
-  DOCUMENT_CHANNEL_OPTIONS,
   SALES_FUNNEL_STAGE_OPTIONS,
   getSalesFunnelStageLabel,
   getSalesFunnelStageStyle,
-  getStageEventAtLabel,
   stageRequiresEventAt,
-  temperatureFromStage,
 } from '../lib/sales-funnel-stages';
 import { SEGMENT_CONFIGS, facetLabel, formatProfileValue, type LeadSegment } from '../lib/lead-segments';
 
@@ -62,11 +58,6 @@ export function SegmentLeadsPage({ segment }: { segment: Exclude<LeadSegment, 's
   const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [updatingLeadId, setUpdatingLeadId] = useState('');
-  const [pendingStage, setPendingStage] = useState<{ lead: any; stage: string } | null>(null);
-  const [documentChannel, setDocumentChannel] = useState('Email');
-  const [appointmentKind, setAppointmentKind] = useState('Present');
-  const [stageEventAt, setStageEventAt] = useState('');
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
@@ -164,36 +155,6 @@ export function SegmentLeadsPage({ segment }: { segment: Exclude<LeadSegment, 's
     setOwnerFilter('All');
     setProvinceFilter('All');
     setProfileFilters({});
-  };
-
-  const applyStageChange = (lead: any, stage: string, extras?: Record<string, unknown>) => {
-    const previousStage = lead.stage || 'TargetSchool';
-    setUpdatingLeadId(lead._id);
-    setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage, status: temperatureFromStage(stage) } : item));
-    apiJson(`/api/leads/${lead._id}`, { stage, ...extras }, { method: 'PUT' })
-      .then(updated => {
-        setLeads(prev => prev.map(item => item._id === lead._id ? updated : item));
-        setPendingStage(null);
-        setMessage(`อัปเดต "${lead.schoolName}" เป็น ${getSalesFunnelStageLabel(stage)} แล้ว — Pipeline และปฏิทินซิงก์ให้อัตโนมัติ`);
-        loadFacets();
-      })
-      .catch(err => {
-        setError(err.message || 'อัปเดตสถานะไม่สำเร็จ');
-        setLeads(prev => prev.map(item => item._id === lead._id ? { ...item, stage: previousStage } : item));
-      })
-      .finally(() => setUpdatingLeadId(''));
-  };
-
-  const handleStageChange = (lead: any, stage: string) => {
-    if ((lead.stage || 'TargetSchool') === stage) return;
-    if (stage === 'DocumentSent' || stageRequiresEventAt(stage)) {
-      setPendingStage({ lead, stage });
-      setDocumentChannel(lead.documentChannel || 'Email');
-      setAppointmentKind(lead.appointmentKind || 'Present');
-      setStageEventAt('');
-      return;
-    }
-    applyStageChange(lead, stage);
   };
 
   const handleAdd = () => {
@@ -385,18 +346,11 @@ export function SegmentLeadsPage({ segment }: { segment: Exclude<LeadSegment, 's
               </div>
 
               <div className="flex flex-wrap gap-1.5">
-                <div className="relative">
-                  <select
-                    value={SALES_FUNNEL_STAGE_OPTIONS.some(opt => opt.value === lead.stage) ? lead.stage : 'TargetSchool'}
-                    onChange={e => handleStageChange(lead, e.target.value)}
-                    disabled={updatingLeadId === lead._id}
-                    className={`appearance-none max-w-40 pr-6 pl-2 py-1 rounded text-[10px] border font-bold outline-none cursor-pointer disabled:cursor-wait ${getSalesFunnelStageStyle(lead.stage || 'TargetSchool')}`}
-                    title="สถานะการขาย (ซิงก์ไป Pipeline)"
-                  >
-                    {SALES_FUNNEL_STAGE_OPTIONS.map(stage => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
-                  </select>
-                  <span className="pointer-events-none absolute right-1.5 top-1 text-[9px]">▾</span>
-                </div>
+                {(lead.stage || 'TargetSchool') !== 'TargetSchool' && (
+                  <span title="สถานะการขาย (เปลี่ยนได้ในหน้าจัดการ)" className={`px-2 py-1 rounded text-[10px] border font-bold ${getSalesFunnelStageStyle(lead.stage)}`}>
+                    {getSalesFunnelStageLabel(lead.stage)}
+                  </span>
+                )}
                 {config.cardChips.map(chip => {
                   const text = formatProfileValue(profile[chip.key], chip.kind);
                   return text ? (
@@ -515,48 +469,6 @@ export function SegmentLeadsPage({ segment }: { segment: Exclude<LeadSegment, 's
         </ModalShell>
       )}
 
-      {pendingStage && (
-        <ModalShell>
-          <form
-            onSubmit={wrapFormSubmit(() => {
-              const extras: Record<string, unknown> = {};
-              if (pendingStage.stage === 'DocumentSent') extras.documentChannel = documentChannel;
-              if (pendingStage.stage === 'Appointed') extras.appointmentKind = appointmentKind;
-              if (stageRequiresEventAt(pendingStage.stage)) extras.stageEventAt = new Date(stageEventAt).toISOString();
-              applyStageChange(pendingStage.lead, pendingStage.stage, extras);
-            })}
-            className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
-          >
-            <h3 className="text-base font-semibold text-slate-100">รายละเอียดสถานะ — {pendingStage.lead.schoolName}</h3>
-            {pendingStage.stage === 'DocumentSent' && (
-              <label className="block text-xs text-slate-400 font-semibold">
-                ช่องทางเอกสาร
-                <select value={documentChannel} onChange={e => setDocumentChannel(e.target.value)} className={`${inputClass} mt-1`}>
-                  {DOCUMENT_CHANNEL_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.value === 'SchoolSubmit' ? 'ยื่นหน่วยงาน' : opt.label}</option>)}
-                </select>
-              </label>
-            )}
-            {pendingStage.stage === 'Appointed' && (
-              <label className="block text-xs text-slate-400 font-semibold">
-                ประเภทนัด
-                <select value={appointmentKind} onChange={e => setAppointmentKind(e.target.value)} className={`${inputClass} mt-1`}>
-                  {APPOINTMENT_KIND_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </label>
-            )}
-            {stageRequiresEventAt(pendingStage.stage) && (
-              <label className="block text-xs text-slate-400 font-semibold">
-                {getStageEventAtLabel(pendingStage.stage)} (จะลงปฏิทินให้อัตโนมัติ)
-                <input type="datetime-local" required value={stageEventAt} onChange={e => setStageEventAt(e.target.value)} className={`${inputClass} mt-1`} />
-              </label>
-            )}
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setPendingStage(null)} className="px-4 py-2 rounded-lg border border-slate-800 text-xs text-slate-400">ยกเลิก</button>
-              <button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-xs font-semibold text-white">บันทึก</button>
-            </div>
-          </form>
-        </ModalShell>
-      )}
     </div>
   );
 }
