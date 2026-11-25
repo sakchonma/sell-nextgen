@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
-import { corporateStage, readSegmentWorkbook, splitContact, toIsoDate, universityStage } from './segment-excel.js';
+import { corporateStage, dropEmptyDuplicateRows, inlineStringsToPlain, readSegmentWorkbook, splitContact, toIsoDate, universityStage } from './segment-excel.js';
 import { mergeContacts, resolveReimportNextCall, resolveReimportStage, validateRecord } from './segment-import.js';
 
 const importsDir = fileURLToPath(new URL('../../data/imports', import.meta.url));
@@ -17,6 +17,16 @@ describe('splitContact', () => {
   });
   it('drops short hotline numbers that the contact form would reject', () => {
     expect(splitContact('1509 (Call Center)').phone).toBeUndefined();
+  });
+});
+
+describe('xlsx quirks', () => {
+  it('reads inline string cells', () => {
+    expect(inlineStringsToPlain('<c r="A1" s="5" t="inlineStr"><is><t>L136</t></is></c>')).toBe('<c r="A1" s="5" t="str"><v>L136</v></c>');
+  });
+  it('drops an empty duplicate of a row that has data', () => {
+    const xml = '<row r="142"><c r="A142"><v>1</v></c></row><row r="143"/><row r="142" ht="15"></row>';
+    expect(dropEmptyDuplicateRows(xml)).toBe('<row r="142"><c r="A142"><v>1</v></c></row><row r="143"/>');
   });
 });
 

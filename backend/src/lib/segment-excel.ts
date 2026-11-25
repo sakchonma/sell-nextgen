@@ -177,6 +177,11 @@ export function corporateRecords(wb: ExcelJS.Workbook): SegmentImportRecord[] {
   const deals = new Map((dealSheet ? readTable(dealSheet, 'ID', /^L\d+$/) : []).map(row => [row.ID as string, row]));
   const top = new Map((topSheet ? readTable(topSheet, 'ID', /^L\d+$/) : []).map(row => [row.ID as string, row]));
 
+  // "ลูกค้าเป้าหมาย" started as a 20-account shortlist; newer files list every account there.
+  // Keep the "20 รายชุดแรก" flag meaningful: when the sheet covers (almost) everyone, flag L01–L20 only.
+  const topIsFullList = top.size >= master.length * 0.9;
+  const inFirstBatch = (code: string) => (topIsFullList ? Number(code.slice(1)) <= 20 : top.has(code));
+
   return master.map(row => {
     const code = row.ID as string;
     const profile: Record<string, any> = pick(row, CORP_MASTER);
@@ -188,7 +193,7 @@ export function corporateRecords(wb: ExcelJS.Workbook): SegmentImportRecord[] {
     Object.assign(profile, dealProfile);
     const topRow = top.get(code);
     if (topRow) Object.assign(profile, pick(topRow, CORP_TOP20));
-    profile.isTop20 = Boolean(topRow);
+    profile.isTop20 = inFirstBatch(code);
 
     const contacts: SegmentImportRecord['contacts'] = [];
     const channel = profile.centralContact || profile.top20Channel;
@@ -322,8 +327,44 @@ export function detectWorkbookKind(wb: ExcelJS.Workbook): WorkbookKind | null {
 }
 
 /**
- * Excel "tables" (Format as Table) are not needed for reading, and exceljs crashes on some of them
- * (e.g. files re-saved by other tools with absolute part paths). Remove them before parsing.
+ * exceljs drops "inline string" cells (<c t="inlineStr"><is><t>…</t></is></c>), which Google Sheets and
+ * some other tools write for newly typed rows. Rewrite them as plain string cells it can read.
+ */
+export function inlineStringsToPlain(xml: string) {
+  return xml.replace(
+    /<c\b([^>]*?)\bt="inlineStr"([^>]*)>\s*<is>([\s\S]*?)<\/is>\s*<\/c>/g,
+    (_match, before: string, after: string, inner: string) => {
+      const text = [...inner.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(part => part[1]).join('');
+      return `<c${before}t="str"${after}><v>${text}</v></c>`;
+    }
+  );
+}
+
+/**
+ * Some tools (e.g. sheets appended to via an add-on or export) write the same row number twice:
+ * once with the data and again later as an empty placeholder. Excel keeps the data; exceljs keeps the
+ * last copy and loses the row. Drop empty duplicates so the row with cells wins.
+ */
+export function dropEmptyDuplicateRows(xml: string) {
+  const seen = new Set<string>();
+  const withCells = new Set<string>();
+  for (const match of xml.matchAll(/<row\b[^>]*?\br="(\d+)"[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    if (match[2] && match[2].includes('<c')) withCells.add(match[1]);
+  }
+  return xml.replace(/<row\b[^>]*?\br="(\d+)"[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g, (row, r: string, inner?: string) => {
+    const empty = !inner || !inner.includes('<c');
+    if (empty && (seen.has(r) || withCells.has(r))) return '';
+    seen.add(r);
+    return row;
+  });
+}
+
+/**
+ * Prepare the file for exceljs:
+ * - Excel "tables" (Format as Table) are not needed for reading, and exceljs crashes on some of them
+ *   (e.g. files re-saved by other tools with absolute part paths) → remove them.
+ * - inline string cells → plain string cells (see inlineStringsToPlain).
+ * - empty duplicate rows removed (see dropEmptyDuplicateRows).
  */
 async function stripTables(buffer: Buffer) {
   const zip = await JSZip.loadAsync(buffer);
@@ -338,7 +379,7 @@ async function stripTables(buffer: Buffer) {
       if (next !== xml) { zip.file(name, next); changed = true; }
     } else if (/^xl\/worksheets\/[^/]+\.xml$/.test(name)) {
       const xml = await zip.file(name)!.async('string');
-      const next = xml.replace(/<tableParts\b[^>]*\/>|<tableParts\b[\s\S]*?<\/tableParts>/g, '');
+      const next = dropEmptyDuplicateRows(inlineStringsToPlain(xml.replace(/<tableParts\b[^>]*\/>|<tableParts\b[\s\S]*?<\/tableParts>/g, '')));
       if (next !== xml) { zip.file(name, next); changed = true; }
     } else if (name === '[Content_Types].xml') {
       const xml = await zip.file(name)!.async('string');
